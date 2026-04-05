@@ -1,0 +1,9 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "urn:github:lpasquali:rune-airgapped:.vex:permanent.openvex.json",
+  "author": "lpasquali",
+  "role": "Project Maintainer",
+  "timestamp": "2026-04-05T00:00:00Z",
+  "version": 1,
+  "statements": []
+}

@@ -1,0 +1,144 @@
+name: Quality Gates
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Path-change detection ──────────────────────────────────────
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      scripts: ${{ steps.filter.outputs.scripts }}
+      config: ${{ steps.filter.outputs.config }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: filter
+        run: |
+          if git diff --name-only ${{ github.event.before || 'HEAD~1' }} HEAD 2>/dev/null | grep -qE '\.(sh|bash)$'; then
+            echo "scripts=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "scripts=false" >> "$GITHUB_OUTPUT"
+          fi
+          if git diff --name-only ${{ github.event.before || 'HEAD~1' }} HEAD 2>/dev/null | grep -qE '\.(ya?ml|json|toml)$|\.vex/|\.github/|CODEOWNERS|LICENSE'; then
+            echo "config=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "config=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── Security: Secret scanning ──────────────────────────────────
+  security-secrets:
+    name: RuneGate/Security/SecretScanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Download gitleaks
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz \
+            | tar xz -C /usr/local/bin gitleaks
+      - name: Scan for secrets
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            gitleaks detect --source . \
+              --log-opts="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} --no-merges --first-parent" \
+              --verbose --redact
+          else
+            BASE="${{ github.event.before }}"
+            if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+              gitleaks detect --source . --verbose --redact
+            else
+              gitleaks detect --source . --log-opts="${BASE}..HEAD --no-merges --first-parent" --verbose --redact
+            fi
+          fi
+
+  # ── Validate: YAML, VEX, scripts ──────────────────────────────
+  validate:
+    name: RuneGate/Validate
+    needs: [changes, security-secrets]
+    if: needs.changes.outputs.config == 'true' || needs.changes.outputs.scripts == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate YAML syntax
+        run: |
+          ERRORS=0
+          for f in $(find . -name '*.yml' -o -name '*.yaml' | grep -v '.git/'); do
+            python3 -c "import yaml; yaml.safe_load(open('$f'))" 2>&1 || { echo "FAIL: $f"; ERRORS=$((ERRORS+1)); }
+          done
+          exit $ERRORS
+      - name: Validate OpenVEX structure
+        run: |
+          for f in $(find .vex -name '*.json' 2>/dev/null); do
+            python3 -c "
+          import json, sys
+          doc = json.load(open('$f'))
+          required = ['@context','@id','author','timestamp','version','statements']
+          missing = [k for k in required if k not in doc]
+          if missing:
+              print(f'FAIL: $f missing {missing}')
+              sys.exit(1)
+          print(f'OK: $f')
+          "
+          done
+      - name: Verify required files
+        run: |
+          for f in README.md LICENSE SECURITY.md CONTRIBUTING.md; do
+            [ -f "$f" ] || { echo "MISSING: $f"; exit 1; }
+          done
+      - name: ShellCheck
+        if: needs.changes.outputs.scripts == 'true'
+        run: |
+          sudo apt-get install -y shellcheck
+          find scripts/ -name '*.sh' -exec shellcheck {} +
+
+  # ── Security: License compliance ───────────────────────────────
+  security-licenses:
+    name: RuneGate/Security/LicenseCompliance
+    needs: [changes, security-secrets]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Apache-2.0 license
+        run: |
+          if [ ! -f LICENSE ]; then
+            echo "WARNING: No LICENSE file found"
+            exit 0
+          fi
+          if grep -q "Apache License" LICENSE; then
+            echo "OK: Apache-2.0 detected"
+          else
+            echo "FAIL: Expected Apache-2.0, found different license"
+            exit 1
+          fi
+
+  # ── Merge Gate (aggregator) ────────────────────────────────────
+  merge-gate:
+    name: Merge Gate
+    if: always()
+    needs: [changes, security-secrets, validate, security-licenses]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate gate results
+        run: |
+          python3 - <<'GATE'
+          import json, os, sys
+          results = {
+              "changes": "${{ needs.changes.result }}",
+              "security-secrets": "${{ needs.security-secrets.result }}",
+              "validate": "${{ needs.validate.result }}",
+              "security-licenses": "${{ needs.security-licenses.result }}",
+          }
+          failed = [k for k, v in results.items() if v == "failure"]
+          if failed:
+              print(f"BLOCKED: {', '.join(failed)} failed")
+              sys.exit(1)
+          print("All gates passed or were skipped")
+          GATE

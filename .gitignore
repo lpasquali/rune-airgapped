@@ -1,0 +1,36 @@
+# Build outputs
+build/
+dist/
+*.tar.gz
+*.tar
+
+# OCI artifacts
+oci-layout/
+zot-storage/
+
+# Virtual environments
+.venv/
+venv/
+
+# Python
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Linting
+.ruff_cache/
+.mypy_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
