@@ -1,0 +1,90 @@
+# Cilium CiliumNetworkPolicy — enhanced L7 policies (optional)
+# IEC 62443 SR 5.2: L7-aware conduit protection with HTTP path restrictions.
+#
+# These policies provide additional security beyond vanilla K8s NetworkPolicy:
+# - DNS-aware egress (FQDN-based rules)
+# - L7 HTTP path restrictions
+# - Hubble flow observability for audit trail
+#
+# Prerequisites: Cilium CNI must be installed on the cluster.
+# Apply these INSTEAD OF vanilla policies if Cilium is available.
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: rune-api-l7
+  namespace: rune
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: rune-api
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: rune-ui
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+          rules:
+            http:
+              - method: GET
+              - method: POST
+    - fromEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: rune-operator
+            "k8s:io.kubernetes.pod.namespace": rune-system
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+          rules:
+            http:
+              - method: POST
+                path: "/v1/jobs"
+              - method: GET
+                path: "/v1/jobs/.*"
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+  namespace: rune
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  endpointSelector: {}
+  ingress:
+    - {}
+  ingressDeny:
+    - {}
+  egress:
+    - {}
+  egressDeny:
+    - {}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: rune
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s-app: kube-dns
+            "k8s:io.kubernetes.pod.namespace": kube-system
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*.rune.svc.cluster.local"
+              - matchPattern: "*.rune-system.svc.cluster.local"
+              - matchPattern: "*.rune-registry.svc.cluster.local"

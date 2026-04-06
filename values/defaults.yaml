@@ -1,0 +1,18 @@
+# Default values for air-gapped RUNE deployment
+# All image references point to the local OCI registry.
+---
+runeVersion: "0.0.0a2"
+
+global:
+  imageRegistry: "rune-registry.rune-registry.svc:5000"
+  imagePullPolicy: IfNotPresent
+  # No external image pulls in air-gapped mode
+  networkPolicy:
+    enabled: true
+  # Disable any outbound telemetry
+  telemetry:
+    enabled: false
+  # TLS for internal services
+  tls:
+    enabled: false
+    # Set to true and provide certs for production

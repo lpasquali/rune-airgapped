@@ -1,0 +1,45 @@
+# RBAC for rune-audit in rune namespace
+# IEC 62443 SR 2.1: Read-only cluster access for evidence collection.
+# IEC 62443 SR 1.1: Dedicated ServiceAccount, automount enabled (needs API access).
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rune-audit
+  namespace: rune
+  labels:
+    app.kubernetes.io/name: rune-audit
+    app.kubernetes.io/part-of: rune
+automountServiceAccountToken: true
+---
+# ClusterRole: Read-only access to pods and events for audit evidence
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rune-audit
+  labels:
+    app.kubernetes.io/name: rune-audit
+    app.kubernetes.io/part-of: rune
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "events"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rune-audit
+  labels:
+    app.kubernetes.io/name: rune-audit
+    app.kubernetes.io/part-of: rune
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rune-audit
+subjects:
+  - kind: ServiceAccount
+    name: rune-audit
+    namespace: rune

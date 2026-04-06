@@ -1,0 +1,42 @@
+# RBAC for rune-api in rune namespace
+# IEC 62443 SR 2.1: No K8s API access needed — internal SQLite backend.
+# IEC 62443 SR 1.1: Dedicated ServiceAccount, automount disabled.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rune-api
+  namespace: rune
+  labels:
+    app.kubernetes.io/name: rune-api
+    app.kubernetes.io/part-of: rune
+automountServiceAccountToken: false
+---
+# Minimal role — no K8s API permissions required.
+# ServiceAccount exists for NetworkPolicy pod selection and audit identity.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: rune-api
+  namespace: rune
+  labels:
+    app.kubernetes.io/name: rune-api
+    app.kubernetes.io/part-of: rune
+rules: []
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rune-api
+  namespace: rune
+  labels:
+    app.kubernetes.io/name: rune-api
+    app.kubernetes.io/part-of: rune
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: rune-api
+subjects:
+  - kind: ServiceAccount
+    name: rune-api
+    namespace: rune

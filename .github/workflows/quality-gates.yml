@@ -71,7 +71,7 @@ jobs:
         run: |
           ERRORS=0
           for f in $(find . -name '*.yml' -o -name '*.yaml' | grep -v '.git/'); do
-            python3 -c "import yaml; yaml.safe_load(open('$f'))" 2>&1 || { echo "FAIL: $f"; ERRORS=$((ERRORS+1)); }
+            python3 -c "import yaml; list(yaml.safe_load_all(open('$f')))" 2>&1 || { echo "FAIL: $f"; ERRORS=$((ERRORS+1)); }
           done
           exit $ERRORS
       - name: Validate OpenVEX structure
