@@ -119,16 +119,64 @@ jobs:
             exit 1
           fi
 
+  # ── Process: PR body compliance ─────────────────────────────────
+  pr-body-check:
+    name: RuneGate/Process/PR-Body-Compliance
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR body structure
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            const body = pr.data.body || '';
+            const errors = [];
+            if (!/[Cc]loses?\s+#\d+|[Ff]ixes?\s+#\d+|[Rr]esolves?\s+#\d+/.test(body)) {
+              errors.push('PR must reference an issue (Closes #NNN, Fixes #NNN, or Resolves #NNN)');
+            }
+            if (!/\[x\]\s+\*\*Level\s+[123]/.test(body)) {
+              errors.push('PR must check exactly one DoD level (Level 1, 2, or 3)');
+            }
+            if (!/## Acceptance Criteria Evidence/.test(body)) {
+              errors.push('PR must include "## Acceptance Criteria Evidence" section');
+            }
+            if (!/## Audit Checks/.test(body)) {
+              errors.push('PR must include "## Audit Checks" section');
+            }
+            if (/## Audit Checks/.test(body) && !/PASS|FAIL|No triggers fired/.test(body)) {
+              errors.push('Audit Checks section must report PASS/FAIL results or state "No triggers fired"');
+            }
+            if (/\|\s*FAIL\s*\|/.test(body)) {
+              errors.push('PR has FAIL audit check results — resolve before merging');
+            }
+            if (!/## Breaking Changes/.test(body)) {
+              errors.push('PR must include "## Breaking Changes" section');
+            }
+            if (errors.length > 0) {
+              const msg = '**PR Body Compliance Check Failed**\n\n' +
+                errors.map(e => `- ❌ ${e}`).join('\n') +
+                '\n\nRefer to the PR template and SYSTEM_PROMPT.md for requirements.';
+              core.setFailed(msg);
+              console.log(msg);
+            } else {
+              console.log('PR body compliance check passed.');
+            }
+
   # ── Merge Gate (aggregator) ────────────────────────────────────
   merge-gate:
     name: Merge Gate
     if: always()
-    needs: [changes, security-secrets, validate, security-licenses]
+    needs: [changes, security-secrets, validate, security-licenses, pr-body-check]
     runs-on: ubuntu-latest
     steps:
       - name: Evaluate gate results
         env:
-          NEEDS_JSON: '{"changes": "${{ needs.changes.result }}", "security-secrets": "${{ needs.security-secrets.result }}", "validate": "${{ needs.validate.result }}", "security-licenses": "${{ needs.security-licenses.result }}"}'
+          NEEDS_JSON: '{"changes": "${{ needs.changes.result }}", "security-secrets": "${{ needs.security-secrets.result }}", "validate": "${{ needs.validate.result }}", "security-licenses": "${{ needs.security-licenses.result }}", "pr-body-check": "${{ needs.pr-body-check.result }}"}'
         run: |
           python3 scripts/merge_gate.py
 
