@@ -1,0 +1,63 @@
+# LimitRanges per namespace
+# IEC 62443 SR 7.6: Default resource limits prevent unbounded
+# resource consumption by individual containers.
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: rune-limits
+  namespace: rune
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      max:
+        cpu: "2"
+        memory: 4Gi
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: rune-system-limits
+  namespace: rune-system
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      max:
+        cpu: "2"
+        memory: 4Gi
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: rune-registry-limits
+  namespace: rune-registry
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      max:
+        cpu: "2"
+        memory: 4Gi

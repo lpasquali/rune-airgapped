@@ -1,0 +1,23 @@
+# rune-ui Helm values
+---
+serviceAccount:
+  name: rune-ui
+  create: false
+
+image:
+  repository: rune-registry.rune-registry.svc:5000/rune-ui
+  pullPolicy: IfNotPresent
+
+service:
+  port: 3000
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+api:
+  endpoint: "http://rune-api.rune.svc:8080"

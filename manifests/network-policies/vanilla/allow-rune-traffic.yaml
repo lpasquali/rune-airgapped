@@ -1,0 +1,240 @@
+# Explicit allow rules for RUNE inter-service communication
+# IEC 62443 SR 5.2: Zone boundary protection — each rule is a documented conduit.
+---
+# Rule 4: UI -> API (TCP/8080)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ui-to-api
+  namespace: rune
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rune-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: rune-ui
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Rule 4 (egress side): UI -> API
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ui-egress-to-api
+  namespace: rune
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rune-ui
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: rune-api
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Rule 5: Operator -> API (TCP/8080, cross-namespace)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-operator-to-api
+  namespace: rune
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rune-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rune-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: rune-operator
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Rule 5 (egress side): Operator -> API (cross-namespace)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-operator-egress-to-api
+  namespace: rune-system
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rune-operator
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rune
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: rune-api
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Rule 6: API -> Ollama (TCP/11434)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-to-ollama
+  namespace: rune
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rune-api
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ollama
+      ports:
+        - protocol: TCP
+          port: 11434
+---
+# Rule 7: API -> SeaweedFS/S3 (TCP/8333)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-to-s3
+  namespace: rune
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rune-api
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: seaweedfs
+      ports:
+        - protocol: TCP
+          port: 8333
+---
+# Rule 8: All rune-* namespaces -> Registry (TCP/5000)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-registry-pulls
+  namespace: rune-registry
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rune-registry
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: rune
+      ports:
+        - protocol: TCP
+          port: 5000
+---
+# Rule 8 (egress side): Pods in rune namespace -> Registry
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-registry
+  namespace: rune
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rune-registry
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: rune-registry
+      ports:
+        - protocol: TCP
+          port: 5000
+---
+# Rule 8 (egress side): Pods in rune-system -> Registry
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-registry
+  namespace: rune-system
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rune-registry
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: rune-registry
+      ports:
+        - protocol: TCP
+          port: 5000
+---
+# Rule 9: Operator -> kube-apiserver (TCP/443)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-operator-to-apiserver
+  namespace: rune-system
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rune-operator
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: TCP
+          port: 443

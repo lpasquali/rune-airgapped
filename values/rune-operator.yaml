@@ -1,0 +1,21 @@
+# rune-operator Helm values
+---
+serviceAccount:
+  name: rune-operator
+  create: false
+
+image:
+  repository: rune-registry.rune-registry.svc:5000/rune-operator
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+leaderElection:
+  enabled: true
+  namespace: rune-system

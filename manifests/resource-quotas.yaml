@@ -1,0 +1,51 @@
+# ResourceQuotas per namespace
+# IEC 62443 SR 7.6: Resource governance prevents denial-of-service
+# from runaway workloads consuming cluster resources.
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: rune-quota
+  namespace: rune
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    pods: "20"
+    persistentvolumeclaims: "5"
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: rune-system-quota
+  namespace: rune-system
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 4Gi
+    limits.cpu: "4"
+    limits.memory: 8Gi
+    pods: "10"
+    persistentvolumeclaims: "2"
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: rune-registry-quota
+  namespace: rune-registry
+  labels:
+    app.kubernetes.io/part-of: rune
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 4Gi
+    limits.cpu: "4"
+    limits.memory: 8Gi
+    pods: "5"
+    persistentvolumeclaims: "3"

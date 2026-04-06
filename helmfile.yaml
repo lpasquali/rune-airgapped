@@ -1,0 +1,48 @@
+# Helmfile: Declarative deployment of all RUNE charts
+# IEC 62443 SR 7.6: Version-controlled, auditable deployment configuration.
+# IEC 62443 SM-10: All charts pulled from local OCI registry only.
+---
+repositories:
+  - name: rune-local
+    url: oci://rune-registry.rune-registry.svc:5000
+
+environments:
+  default:
+    values:
+      - values/defaults.yaml
+  production:
+    values:
+      - values/defaults.yaml
+      - values/production.yaml
+
+releases:
+  - name: rune-operator
+    namespace: rune-system
+    chart: rune-local/rune-operator
+    version: "{{ .Values.runeVersion }}"
+    values:
+      - values/rune-operator.yaml
+    labels:
+      tier: control-plane
+
+  - name: rune-api
+    namespace: rune
+    chart: rune-local/rune
+    version: "{{ .Values.runeVersion }}"
+    values:
+      - values/rune-api.yaml
+    needs:
+      - rune-system/rune-operator
+    labels:
+      tier: application
+
+  - name: rune-ui
+    namespace: rune
+    chart: rune-local/rune-ui
+    version: "{{ .Values.runeVersion }}"
+    values:
+      - values/rune-ui.yaml
+    needs:
+      - rune/rune-api
+    labels:
+      tier: application

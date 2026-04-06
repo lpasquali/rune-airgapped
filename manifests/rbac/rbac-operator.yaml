@@ -1,0 +1,115 @@
+# RBAC for rune-operator in rune-system namespace
+# IEC 62443 SR 2.1: Least-privilege — no wildcards, no cluster-admin.
+# IEC 62443 SR 1.1: Dedicated ServiceAccount with bound token projection.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rune-operator
+  namespace: rune-system
+  labels:
+    app.kubernetes.io/name: rune-operator
+    app.kubernetes.io/part-of: rune
+automountServiceAccountToken: false
+---
+# ClusterRole: Watch/manage RuneBenchmark CRDs across all namespaces
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rune-operator
+  labels:
+    app.kubernetes.io/name: rune-operator
+    app.kubernetes.io/part-of: rune
+rules:
+  # CRD watching — RuneBenchmark resources
+  - apiGroups: ["rune.io"]
+    resources: ["runebenchmarks"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["rune.io"]
+    resources: ["runebenchmarks/status"]
+    verbs: ["get", "update", "patch"]
+  # Events for status reporting
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rune-operator
+  labels:
+    app.kubernetes.io/name: rune-operator
+    app.kubernetes.io/part-of: rune
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rune-operator
+subjects:
+  - kind: ServiceAccount
+    name: rune-operator
+    namespace: rune-system
+---
+# Role in rune-system: Leader election via Leases
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: rune-operator-leader-election
+  namespace: rune-system
+  labels:
+    app.kubernetes.io/name: rune-operator
+    app.kubernetes.io/part-of: rune
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rune-operator-leader-election
+  namespace: rune-system
+  labels:
+    app.kubernetes.io/name: rune-operator
+    app.kubernetes.io/part-of: rune
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: rune-operator-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: rune-operator
+    namespace: rune-system
+---
+# Role in rune namespace: Create jobs, read pods for status
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: rune-operator-rune-ns
+  namespace: rune
+  labels:
+    app.kubernetes.io/name: rune-operator
+    app.kubernetes.io/part-of: rune
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rune-operator-rune-ns
+  namespace: rune
+  labels:
+    app.kubernetes.io/name: rune-operator
+    app.kubernetes.io/part-of: rune
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: rune-operator-rune-ns
+subjects:
+  - kind: ServiceAccount
+    name: rune-operator
+    namespace: rune-system

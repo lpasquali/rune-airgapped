@@ -1,0 +1,93 @@
+# Calico GlobalNetworkPolicy — enhanced policies (optional)
+# IEC 62443 SR 5.1: Global default-deny with explicit allow rules.
+#
+# These policies use Calico CRDs for equivalent network segmentation.
+# Prerequisites: Calico CNI must be installed on the cluster.
+# Apply these INSTEAD OF vanilla policies if Calico is available.
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: rune-default-deny
+spec:
+  selector: has(app.kubernetes.io/part-of) && app.kubernetes.io/part-of == 'rune'
+  types:
+    - Ingress
+    - Egress
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: rune-allow-dns
+spec:
+  selector: has(app.kubernetes.io/part-of) && app.kubernetes.io/part-of == 'rune'
+  types:
+    - Egress
+  egress:
+    - action: Allow
+      protocol: UDP
+      destination:
+        selector: k8s-app == 'kube-dns'
+        namespaceSelector: kubernetes.io/metadata.name == 'kube-system'
+        ports:
+          - 53
+    - action: Allow
+      protocol: TCP
+      destination:
+        selector: k8s-app == 'kube-dns'
+        namespaceSelector: kubernetes.io/metadata.name == 'kube-system'
+        ports:
+          - 53
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: rune-allow-ui-to-api
+spec:
+  selector: app.kubernetes.io/name == 'rune-api'
+  types:
+    - Ingress
+  ingress:
+    - action: Allow
+      protocol: TCP
+      source:
+        selector: app.kubernetes.io/name == 'rune-ui'
+        namespaceSelector: kubernetes.io/metadata.name == 'rune'
+      destination:
+        ports:
+          - 8080
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: rune-allow-operator-to-api
+spec:
+  selector: app.kubernetes.io/name == 'rune-api'
+  types:
+    - Ingress
+  ingress:
+    - action: Allow
+      protocol: TCP
+      source:
+        selector: app.kubernetes.io/name == 'rune-operator'
+        namespaceSelector: kubernetes.io/metadata.name == 'rune-system'
+      destination:
+        ports:
+          - 8080
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: rune-allow-registry-pulls
+spec:
+  selector: app.kubernetes.io/name == 'rune-registry'
+  types:
+    - Ingress
+  ingress:
+    - action: Allow
+      protocol: TCP
+      source:
+        namespaceSelector: has(app.kubernetes.io/part-of) && app.kubernetes.io/part-of == 'rune'
+      destination:
+        ports:
+          - 5000
