@@ -1,0 +1,80 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 RUNE Contributors
+#
+# prerequisites/tasks/main.yml — Install packages required for RUNE
+# air-gapped Kubernetes deployment.
+#
+# In air-gapped environments, packages must come from a local repository
+# mirror or be pre-installed on the base image. Adjust the package names
+# and installation method to match your distribution and local repo setup.
+---
+- name: Load kernel modules required by containerd
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+
+- name: Persist kernel modules across reboots
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/rune-containerd.conf
+    content: |
+      # Required by containerd for Kubernetes
+      overlay
+      br_netfilter
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Set sysctl parameters for Kubernetes networking
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-rune-kubernetes.conf
+    reload: true
+    state: present
+  loop:
+    - { key: "net.bridge.bridge-nf-call-iptables", value: "1" }
+    - { key: "net.bridge.bridge-nf-call-ip6tables", value: "1" }
+    - { key: "net.ipv4.ip_forward", value: "1" }
+
+# NOTE: In air-gapped environments, these packages must be available from
+# a local repository mirror. Configure your package manager sources before
+# running this playbook, or pre-install packages on the base image.
+- name: Install required packages
+  ansible.builtin.package:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - containerd
+    - kubelet
+    - kubeadm
+    - kubectl
+
+- name: Ensure containerd is running and enabled
+  ansible.builtin.systemd:
+    name: containerd
+    state: started
+    enabled: true
+
+- name: Ensure kubelet is enabled (started by kubeadm init/join)
+  ansible.builtin.systemd:
+    name: kubelet
+    enabled: true
+
+# Helm is a single static binary — copy from the bundle or local source.
+# Adjust the source path to match your bundle extraction location.
+- name: Check if helm is installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/helm
+  register: helm_binary
+
+- name: Copy helm binary from bundle (if not already installed)
+  ansible.builtin.copy:
+    src: "{{ helm_bundle_path | default('/opt/rune-bundle/bin/helm') }}"
+    dest: /usr/local/bin/helm
+    owner: root
+    group: root
+    mode: "0755"
+  when: not helm_binary.stat.exists
