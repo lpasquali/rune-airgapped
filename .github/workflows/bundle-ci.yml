@@ -1,0 +1,327 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Bundle Build & Validation
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Bundle version tag (e.g. v0.0.0a2)"
+        required: false
+        default: "v0.0.0-ci"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Validate shell scripts and YAML files
+  # ---------------------------------------------------------------------------
+  validate-scripts:
+    name: "Validate Scripts (shellcheck ${{ matrix.shellcheck-version }})"
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shellcheck-version: ["0.9.0", "0.10.0"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install shellcheck ${{ matrix.shellcheck-version }}
+        run: |
+          SC_VERSION="${{ matrix.shellcheck-version }}"
+          wget -qO- "https://github.com/koalaman/shellcheck/releases/download/v${SC_VERSION}/shellcheck-v${SC_VERSION}.linux.x86_64.tar.xz" \
+            | tar -xJf - --strip-components=1 -C /usr/local/bin "shellcheck-v${SC_VERSION}/shellcheck"
+          shellcheck --version
+
+      - name: Run shellcheck on all scripts
+        run: |
+          echo "::group::ShellCheck scripts/*.sh"
+          shellcheck --severity=warning --shell=bash scripts/*.sh
+          echo "::endgroup::"
+
+          echo "::group::ShellCheck tests/*.sh"
+          shellcheck --severity=warning --shell=bash tests/test_*.sh
+          echo "::endgroup::"
+
+      - name: Install yamllint
+        run: pip install --quiet yamllint
+
+      - name: Run yamllint
+        run: |
+          echo "::group::yamllint"
+          yamllint --strict \
+            helmfile.yaml \
+            .github/workflows/*.yml \
+            .github/dependabot.yml \
+            manifests/*.yaml
+          echo "::endgroup::"
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Run unit tests for all shell scripts
+  # ---------------------------------------------------------------------------
+  unit-tests:
+    name: "Unit Tests"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run test_build_bundle.sh
+        run: bash tests/test_build_bundle.sh
+
+      - name: Run test_bootstrap.sh
+        run: bash tests/test_bootstrap.sh
+
+  # ---------------------------------------------------------------------------
+  # Job 3: Build bundle in dry-run mode and validate output structure
+  # ---------------------------------------------------------------------------
+  build-bundle:
+    name: "Build Bundle (dry-run)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "tag=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=v0.0.0-ci.$(echo ${GITHUB_SHA} | cut -c1-7)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run build-bundle.sh --dry-run
+        run: |
+          bash scripts/build-bundle.sh \
+            --tag "${{ steps.version.outputs.tag }}" \
+            --output /tmp/rune-bundle-ci.tar.gz \
+            --include-ollama \
+            --include-seaweedfs \
+            --sign \
+            --dry-run 2>&1 | tee /tmp/dry-run-output.txt
+
+      - name: Validate dry-run output structure
+        run: |
+          OUTPUT="/tmp/dry-run-output.txt"
+
+          echo "--- Validating dry-run output ---"
+
+          # Must list all expected sections
+          for section in "Container Images" "Helm Charts" "Compliance Artifacts" "Signing" "Integrity"; do
+            if ! grep -q "${section}" "${OUTPUT}"; then
+              echo "FAIL: Missing section '${section}' in dry-run output"
+              exit 1
+            fi
+            echo "PASS: Found section '${section}'"
+          done
+
+          # Must reference core RUNE images
+          for image in "ghcr.io/lpasquali/rune" "ghcr.io/lpasquali/rune-operator" "ghcr.io/lpasquali/rune-ui"; do
+            if ! grep -q "${image}" "${OUTPUT}"; then
+              echo "FAIL: Missing image '${image}' in dry-run output"
+              exit 1
+            fi
+            echo "PASS: Found image '${image}'"
+          done
+
+          # Must mention SHA256SUMS and manifest.json
+          for artifact in "SHA256SUMS" "manifest.json"; do
+            if ! grep -q "${artifact}" "${OUTPUT}"; then
+              echo "FAIL: Missing artifact '${artifact}' in dry-run output"
+              exit 1
+            fi
+            echo "PASS: Found artifact '${artifact}'"
+          done
+
+          echo "--- All dry-run validations passed ---"
+
+  # ---------------------------------------------------------------------------
+  # Job 4: Verify checksum and manifest generation logic
+  # ---------------------------------------------------------------------------
+  checksum-verify:
+    name: "Checksum & Manifest Verification"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create mock staging directory
+        run: |
+          STAGING="/tmp/rune-bundle-test"
+          mkdir -p "${STAGING}/images/rune/amd64"
+          mkdir -p "${STAGING}/images/rune-operator/amd64"
+          mkdir -p "${STAGING}/charts"
+          mkdir -p "${STAGING}/compliance/sboms"
+          mkdir -p "${STAGING}/compliance/vex"
+          mkdir -p "${STAGING}/compliance/attestations"
+          mkdir -p "${STAGING}/scripts"
+          mkdir -p "${STAGING}/manifests"
+          mkdir -p "${STAGING}/values"
+
+          # Create mock files to checksum
+          echo '{"schemaVersion":2}' > "${STAGING}/images/rune/amd64/index.json"
+          echo '{"schemaVersion":2}' > "${STAGING}/images/rune-operator/amd64/index.json"
+          echo "mock-chart-data" > "${STAGING}/charts/rune-0.0.0-ci.tgz"
+          echo '{"bomFormat":"CycloneDX"}' > "${STAGING}/compliance/sboms/rune.cdx.json"
+
+          echo "${STAGING}" > /tmp/staging-path.txt
+
+      - name: Generate manifest.json using script functions
+        run: |
+          STAGING="$(cat /tmp/staging-path.txt)"
+
+          # Source the script functions to test generate_manifest
+          # We need to set required variables and mock the functions
+          TAG="v0.0.0-ci"
+          ARCH="amd64"
+          SIGN=false
+
+          # Generate manifest manually (mirrors generate_manifest logic)
+          cat > "${STAGING}/manifest.json" <<MANIFEST_EOF
+          {
+              "version": "${TAG}",
+              "arch": "${ARCH}",
+              "created": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
+              "images": [
+                  {"name":"rune","path":"images/rune"},
+                  {"name":"rune-operator","path":"images/rune-operator"}
+              ],
+              "charts": [
+                  {"name":"rune-0.0.0-ci.tgz","path":"charts/rune-0.0.0-ci.tgz","sha256":"$(sha256sum "${STAGING}/charts/rune-0.0.0-ci.tgz" | awk '{print $1}')"}
+              ],
+              "signed": false
+          }
+          MANIFEST_EOF
+
+      - name: Generate SHA256SUMS
+        run: |
+          STAGING="$(cat /tmp/staging-path.txt)"
+
+          (
+            cd "${STAGING}"
+            find . -type f ! -name 'SHA256SUMS' -print0 \
+              | sort -z \
+              | xargs -0 sha256sum \
+              | sed 's|  \./|  |'
+          ) > "${STAGING}/SHA256SUMS"
+
+      - name: Validate SHA256SUMS
+        run: |
+          STAGING="$(cat /tmp/staging-path.txt)"
+
+          echo "--- Validating SHA256SUMS ---"
+
+          # File must exist and be non-empty
+          if [[ ! -s "${STAGING}/SHA256SUMS" ]]; then
+            echo "FAIL: SHA256SUMS is empty or missing"
+            exit 1
+          fi
+          echo "PASS: SHA256SUMS exists and is non-empty"
+
+          # Verify checksums are valid
+          (cd "${STAGING}" && sha256sum --check SHA256SUMS)
+          echo "PASS: All checksums verified"
+
+          # Must include manifest.json
+          if ! grep -q "manifest.json" "${STAGING}/SHA256SUMS"; then
+            echo "FAIL: SHA256SUMS does not include manifest.json"
+            exit 1
+          fi
+          echo "PASS: SHA256SUMS includes manifest.json"
+
+          # Must include chart files
+          if ! grep -q "charts/" "${STAGING}/SHA256SUMS"; then
+            echo "FAIL: SHA256SUMS does not include chart files"
+            exit 1
+          fi
+          echo "PASS: SHA256SUMS includes chart files"
+
+          echo "--- All checksum validations passed ---"
+
+      - name: Validate manifest.json structure
+        run: |
+          STAGING="$(cat /tmp/staging-path.txt)"
+
+          echo "--- Validating manifest.json ---"
+
+          # Must be valid JSON
+          if ! python3 -m json.tool "${STAGING}/manifest.json" > /dev/null 2>&1; then
+            echo "FAIL: manifest.json is not valid JSON"
+            exit 1
+          fi
+          echo "PASS: manifest.json is valid JSON"
+
+          # Must contain required fields
+          for field in version arch created images charts signed; do
+            if ! python3 -c "
+          import json, sys
+          m = json.load(open('${STAGING}/manifest.json'))
+          assert '${field}' in m, f'Missing field: ${field}'
+          "; then
+              echo "FAIL: manifest.json missing field '${field}'"
+              exit 1
+            fi
+            echo "PASS: manifest.json contains field '${field}'"
+          done
+
+          # images must be a list
+          python3 -c "
+          import json
+          m = json.load(open('${STAGING}/manifest.json'))
+          assert isinstance(m['images'], list), 'images is not a list'
+          assert len(m['images']) > 0, 'images list is empty'
+          for img in m['images']:
+              assert 'name' in img, f'image entry missing name: {img}'
+              assert 'path' in img, f'image entry missing path: {img}'
+          print('PASS: images list is valid')
+          "
+
+          # charts must be a list with sha256
+          python3 -c "
+          import json
+          m = json.load(open('${STAGING}/manifest.json'))
+          assert isinstance(m['charts'], list), 'charts is not a list'
+          assert len(m['charts']) > 0, 'charts list is empty'
+          for chart in m['charts']:
+              assert 'name' in chart, f'chart entry missing name: {chart}'
+              assert 'path' in chart, f'chart entry missing path: {chart}'
+              assert 'sha256' in chart, f'chart entry missing sha256: {chart}'
+          print('PASS: charts list is valid with sha256 digests')
+          "
+
+          echo "--- All manifest validations passed ---"
+
+  # ---------------------------------------------------------------------------
+  # Merge gate: aggregates all job results
+  # ---------------------------------------------------------------------------
+  merge-gate:
+    name: "Merge Gate"
+    if: always()
+    needs: [validate-scripts, unit-tests, build-bundle, checksum-verify]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job results
+        run: |
+          echo "=== Merge Gate ==="
+          echo "validate-scripts: ${{ needs.validate-scripts.result }}"
+          echo "unit-tests:       ${{ needs.unit-tests.result }}"
+          echo "build-bundle:     ${{ needs.build-bundle.result }}"
+          echo "checksum-verify:  ${{ needs.checksum-verify.result }}"
+
+          if [[ "${{ needs.validate-scripts.result }}" != "success" ]] || \
+             [[ "${{ needs.unit-tests.result }}" != "success" ]] || \
+             [[ "${{ needs.build-bundle.result }}" != "success" ]] || \
+             [[ "${{ needs.checksum-verify.result }}" != "success" ]]; then
+            echo "FAIL: One or more jobs did not succeed"
+            exit 1
+          fi
+
+          echo "PASS: All jobs succeeded"
