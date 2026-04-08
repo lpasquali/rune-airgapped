@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 RUNE Contributors
+---
+- name: restart containerd
+  ansible.builtin.systemd:
+    name: containerd
+    state: restarted
+    daemon_reload: true

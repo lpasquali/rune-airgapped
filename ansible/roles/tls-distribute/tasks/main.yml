@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 RUNE Contributors
+#
+# tls-distribute/tasks/main.yml — Distribute TLS certificates to all
+# cluster nodes so they trust the air-gapped OCI registry.
+#
+# The CA certificate is added to:
+#   1. The containerd hosts.d directory (for image pulls)
+#   2. The system trust store (for helm, curl, etc.)
+#
+# Certificate source paths are defined in inventory vars:
+#   rune_tls_ca_cert  — CA certificate (required)
+#   rune_tls_cert     — Server certificate (optional, for mutual TLS)
+#   rune_tls_key      — Server private key (optional, for mutual TLS)
+---
+- name: Validate that CA certificate source exists on control node
+  ansible.builtin.stat:
+    path: "{{ rune_tls_ca_cert }}"
+  delegate_to: localhost
+  become: false
+  register: ca_cert_stat
+
+- name: Fail if CA certificate is missing
+  ansible.builtin.fail:
+    msg: >
+      CA certificate not found at {{ rune_tls_ca_cert }}.
+      Generate certificates first (see scripts/bootstrap.sh or
+      docs/research/002-airgapped-registry.md).
+  when: not ca_cert_stat.stat.exists
+
+# Copy CA cert to the containerd hosts.d directory so containerd trusts
+# the air-gapped registry for image pulls.
+- name: Copy CA certificate to containerd hosts.d
+  ansible.builtin.copy:
+    src: "{{ rune_tls_ca_cert }}"
+    dest: "/etc/containerd/certs.d/{{ rune_registry_host }}:{{ rune_registry_port }}/ca.crt"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart containerd
+
+# Add CA cert to the system trust store so non-containerd tools (helm,
+# curl, crictl) also trust the registry.
+- name: Copy CA certificate to system trust store (Debian/Ubuntu)
+  ansible.builtin.copy:
+    src: "{{ rune_tls_ca_cert }}"
+    dest: /usr/local/share/ca-certificates/rune-registry-ca.crt
+    owner: root
+    group: root
+    mode: "0644"
+  when: ansible_os_family == "Debian"
+  notify: update ca trust debian
+
+- name: Copy CA certificate to system trust store (RHEL/CentOS)
+  ansible.builtin.copy:
+    src: "{{ rune_tls_ca_cert }}"
+    dest: /etc/pki/ca-trust/source/anchors/rune-registry-ca.crt
+    owner: root
+    group: root
+    mode: "0644"
+  when: ansible_os_family == "RedHat"
+  notify: update ca trust redhat

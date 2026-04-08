@@ -1,0 +1,133 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 RUNE Contributors
+#
+# firewall/tasks/main.yml — Configure firewall rules for Kubernetes
+# cluster communication and air-gapped registry access.
+#
+# This playbook supports both firewalld (RHEL/CentOS) and ufw (Ubuntu).
+# Adjust or extend for your firewall solution.
+#
+# Ports opened:
+#   - 6443/tcp  — Kubernetes API server
+#   - 2379-2380/tcp — etcd (control plane only)
+#   - 10250/tcp — kubelet API
+#   - 10259/tcp — kube-scheduler
+#   - 10257/tcp — kube-controller-manager
+#   - 5000/tcp  — Air-gapped OCI registry (NodePort)
+#   - 30000-32767/tcp — Kubernetes NodePort range
+---
+
+# --- firewalld (RHEL/CentOS/Fedora) ---
+
+- name: Check if firewalld is active
+  ansible.builtin.systemd:
+    name: firewalld
+  register: firewalld_status
+  ignore_errors: true
+
+- name: Open Kubernetes API port (firewalld)
+  ansible.posix.firewalld:
+    port: "{{ k8s_api_port | default(6443) }}/tcp"
+    permanent: true
+    immediate: true
+    state: enabled
+  when: firewalld_status.status.ActiveState | default('') == 'active'
+
+- name: Open etcd ports on control plane nodes (firewalld)
+  ansible.posix.firewalld:
+    port: "{{ item }}/tcp"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop:
+    - "2379"
+    - "2380"
+  when:
+    - firewalld_status.status.ActiveState | default('') == 'active'
+    - inventory_hostname in groups.get('control_plane', [])
+
+- name: Open kubelet and scheduler ports (firewalld)
+  ansible.posix.firewalld:
+    port: "{{ item }}/tcp"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop:
+    - "10250"
+    - "10259"
+    - "10257"
+  when: firewalld_status.status.ActiveState | default('') == 'active'
+
+- name: Open registry port (firewalld)
+  ansible.posix.firewalld:
+    port: "{{ rune_registry_port | default(5000) }}/tcp"
+    permanent: true
+    immediate: true
+    state: enabled
+  when: firewalld_status.status.ActiveState | default('') == 'active'
+
+- name: Open NodePort range (firewalld)
+  ansible.posix.firewalld:
+    port: "30000-32767/tcp"
+    permanent: true
+    immediate: true
+    state: enabled
+  when: firewalld_status.status.ActiveState | default('') == 'active'
+
+# --- ufw (Ubuntu/Debian) ---
+
+- name: Check if ufw is active
+  ansible.builtin.command:
+    cmd: ufw status
+  register: ufw_status
+  changed_when: false
+  ignore_errors: true
+
+- name: Open Kubernetes API port (ufw)
+  community.general.ufw:
+    rule: allow
+    port: "{{ k8s_api_port | default(6443) }}"
+    proto: tcp
+    comment: "RUNE - Kubernetes API server"
+  when: ufw_status.stdout | default('') is search('Status. active')
+
+- name: Open etcd ports on control plane nodes (ufw)
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+    comment: "RUNE - etcd"
+  loop:
+    - "2379"
+    - "2380"
+  when:
+    - ufw_status.stdout | default('') is search('Status. active')
+    - inventory_hostname in groups.get('control_plane', [])
+
+- name: Open kubelet and scheduler ports (ufw)
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+    comment: "RUNE - Kubernetes services"
+  loop:
+    - "10250"
+    - "10259"
+    - "10257"
+  when: ufw_status.stdout | default('') is search('Status. active')
+
+- name: Open registry port (ufw)
+  community.general.ufw:
+    rule: allow
+    port: "{{ rune_registry_port | default(5000) }}"
+    proto: tcp
+    comment: "RUNE - Air-gapped OCI registry"
+  when: ufw_status.stdout | default('') is search('Status. active')
+
+- name: Open NodePort range (ufw)
+  community.general.ufw:
+    rule: allow
+    port: "30000:32767"
+    proto: tcp
+    comment: "RUNE - Kubernetes NodePort range"
+  when: ufw_status.stdout | default('') is search('Status. active')

@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 RUNE Contributors
+#
+# cluster-prep.yml — Main playbook for multi-node air-gapped cluster
+# preparation. Prepares all nodes in the rune_nodes group for RUNE
+# deployment by installing prerequisites, configuring containerd mirrors,
+# distributing TLS certificates, and setting up firewall rules.
+#
+# Usage:
+#   ansible-playbook ansible/cluster-prep.yml
+#   ansible-playbook ansible/cluster-prep.yml --check   # dry-run mode
+#   ansible-playbook ansible/cluster-prep.yml --tags tls # run only TLS tasks
+#
+# Prerequisites:
+#   - Ansible 2.14+ on the control node
+#   - SSH access to all target nodes
+#   - Inventory file configured (see inventory/sample.ini)
+#
+# See ADR-003 (docs/research/003-automation-framework.md) for rationale on
+# why Ansible is optional/deferred and when to use it vs. bootstrap.sh.
+---
+- name: RUNE air-gapped cluster preparation
+  hosts: rune_nodes
+  become: true
+  gather_facts: true
+
+  vars:
+    # Override these in inventory or via --extra-vars
+    rune_registry_host: "{{ rune_registry_host | default('rune-registry.example.local') }}"
+    rune_registry_port: "{{ rune_registry_port | default(5000) }}"
+
+  roles:
+    # 1. Install required packages (containerd, kubelet, helm)
+    - role: prerequisites
+      tags: [prerequisites, packages]
+
+    # 2. Configure containerd to use the air-gapped registry as a mirror
+    - role: containerd-config
+      tags: [containerd, registry]
+
+    # 3. Distribute TLS certificates to all nodes
+    - role: tls-distribute
+      tags: [tls, certificates]
+
+    # 4. Configure firewall rules for K8s and registry traffic
+    - role: firewall
+      tags: [firewall, network]
