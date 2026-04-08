@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 name: Quality Gates
 
 on:
@@ -9,120 +10,44 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  # ── Path-change detection ──────────────────────────────────────
-  changes:
-    name: Detect Changes
-    runs-on: ubuntu-latest
-    outputs:
-      scripts: ${{ steps.filter.outputs.scripts }}
-      config: ${{ steps.filter.outputs.config }}
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - id: filter
-        run: |
-          if git diff --name-only ${{ github.event.before || 'HEAD~1' }} HEAD 2>/dev/null | grep -qE '\.(sh|bash)$'; then
-            echo "scripts=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "scripts=false" >> "$GITHUB_OUTPUT"
-          fi
-          if git diff --name-only ${{ github.event.before || 'HEAD~1' }} HEAD 2>/dev/null | grep -qE '\.(ya?ml|json|toml)$|\.vex/|\.github/|CODEOWNERS|LICENSE'; then
-            echo "config=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "config=false" >> "$GITHUB_OUTPUT"
-          fi
+  # ─── Reusable: Security scanning (gitleaks) ─────────────────────
+  security:
+    name: Security
+    uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@v0.1.0
 
-  # ── Security: Secret scanning ──────────────────────────────────
-  security-secrets:
-    name: RuneGate/Security/SecretScanning
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-      - name: Download gitleaks
-        run: |
-          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz \
-            | tar xz -C /usr/local/bin gitleaks
-      - name: Scan for secrets
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            gitleaks detect --source . \
-              --log-opts="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} --no-merges --first-parent" \
-              --verbose --redact
-          else
-            BASE="${{ github.event.before }}"
-            if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
-              gitleaks detect --source . --verbose --redact
-            else
-              gitleaks detect --source . --log-opts="${BASE}..HEAD --no-merges --first-parent" --verbose --redact
-            fi
-          fi
+  # ─── Reusable: Shell quality (shellcheck, yamllint) ─────────────
+  shell:
+    name: Shell
+    uses: lpasquali/rune-ci/.github/workflows/shell-quality.yml@v0.1.0
+    with:
+      script-dirs: "scripts"
 
-  # ── Validate: YAML, VEX, scripts ──────────────────────────────
+  # ─── Validate: YAML, VEX, required files ────────────────────────
   validate:
     name: RuneGate/Validate
-    needs: [changes, security-secrets]
-    if: needs.changes.outputs.config == 'true' || needs.changes.outputs.scripts == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Validate YAML syntax
-        run: |
-          ERRORS=0
-          for f in $(find . -name '*.yml' -o -name '*.yaml' | grep -v '.git/'); do
-            python3 -c "import yaml; list(yaml.safe_load_all(open('$f')))" 2>&1 || { echo "FAIL: $f"; ERRORS=$((ERRORS+1)); }
-          done
-          exit $ERRORS
-      - name: Validate OpenVEX structure
-        run: |
-          for f in $(find .vex -name '*.json' 2>/dev/null); do
-            python3 -c "
-          import json, sys
-          doc = json.load(open('$f'))
-          required = ['@context','@id','author','timestamp','version','statements']
-          missing = [k for k in required if k not in doc]
-          if missing:
-              print(f'FAIL: $f missing {missing}')
-              sys.exit(1)
-          print(f'OK: $f')
-          "
-          done
+        run: python3 scripts/validate_yaml.py
+      - name: Validate OpenVEX documents
+        run: python3 scripts/validate_vex.py
       - name: Verify required files
         run: |
+          set -euo pipefail
           for f in README.md LICENSE SECURITY.md CONTRIBUTING.md; do
             [ -f "$f" ] || { echo "MISSING: $f"; exit 1; }
           done
-      - name: ShellCheck
-        if: needs.changes.outputs.scripts == 'true'
-        run: |
-          sudo apt-get install -y shellcheck
-          find scripts/ -name '*.sh' -exec shellcheck {} +
 
-  # ── Security: License compliance ───────────────────────────────
-  security-licenses:
-    name: RuneGate/Security/LicenseCompliance
-    needs: [changes, security-secrets]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Verify Apache-2.0 license
-        run: |
-          if [ ! -f LICENSE ]; then
-            echo "WARNING: No LICENSE file found"
-            exit 0
-          fi
-          if grep -q "Apache License" LICENSE; then
-            echo "OK: Apache-2.0 detected"
-          else
-            echo "FAIL: Expected Apache-2.0, found different license"
-            exit 1
-          fi
-
-  # ── Process: PR body compliance ─────────────────────────────────
+  # ─── Process: PR body compliance ────────────────────────────────
   pr-body-check:
     name: RuneGate/Process/PR-Body-Compliance
     if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
@@ -162,7 +87,7 @@ jobs:
             }
             if (errors.length > 0) {
               const msg = '**PR Body Compliance Check Failed**\n\n' +
-                errors.map(e => `- ❌ ${e}`).join('\n') +
+                errors.map(e => `- ${e}`).join('\n') +
                 '\n\nRefer to the PR template and SYSTEM_PROMPT.md for requirements.';
               core.setFailed(msg);
               console.log(msg);
@@ -170,22 +95,40 @@ jobs:
               console.log('PR body compliance check passed.');
             }
 
-  # ── Merge Gate (aggregator) ────────────────────────────────────
+  # ─── Merge gate ─────────────────────────────────────────────────
   merge-gate:
     name: Merge Gate
     if: always()
-    needs: [changes, security-secrets, validate, security-licenses, pr-body-check]
+    needs:
+      - security
+      - shell
+      - validate
+      - pr-body-check
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Evaluate gate results
         env:
-          NEEDS_JSON: '{"changes": "${{ needs.changes.result }}", "security-secrets": "${{ needs.security-secrets.result }}", "validate": "${{ needs.validate.result }}", "security-licenses": "${{ needs.security-licenses.result }}", "pr-body-check": "${{ needs.pr-body-check.result }}"}'
+          NEEDS_JSON: ${{ toJson(needs) }}
         run: |
-          python3 scripts/merge_gate.py
+          python3 - <<'PY'
+          import json, os
+          data = json.loads(os.environ['NEEDS_JSON'])
+          failed = [
+              (k, v.get('result'))
+              for k, v in data.items()
+              if v.get('result') not in ('success', 'skipped')
+          ]
+          for k, v in data.items():
+              print(f'{k}: {v.get("result")}')
+          if failed:
+              print('Merge blocked due to failing RuneGate checks:')
+              for item in failed:
+                  print(f'- {item[0]}: {item[1]}')
+              raise SystemExit(1)
+          print('All RuneGate checks passed.')
+          PY
 
-  # ── ML4 Automated Peer Review ──────────────────────────────────────────────
+  # ─── ML4 Automated Peer Review ─────────────────────────────────
   ml4-peer-review:
     name: RuneGate/Compliance/ML4-Automated-Approval
     needs: [merge-gate]
