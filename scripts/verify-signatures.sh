@@ -122,6 +122,7 @@ find_cosign() {
     log_error "cosign binary not found. Bundle it under <bundle>/tools/cosign or install it."
     exit 1
 }
+# shellcheck disable=SC2329
 
 discover_images() {
     local manifest_file="${BUNDLE_DIR}/manifest.json"
