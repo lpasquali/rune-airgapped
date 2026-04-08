@@ -349,8 +349,18 @@ collect_compliance_artifacts() {
         find "${REPO_ROOT}/.vex" -name '*.json' -exec cp {} "${compliance_dir}/vex/" \; 2>/dev/null || true
     fi
 
-    # Placeholder for SBOMs and attestations (collected from CI artifacts)
-    log_info "Compliance artifact directories created (SBOMs/attestations populated by CI)"
+    # Collect SBOMs and attestations from the repo (populated by CI artifacts in earlier phases)
+    if [[ -d "${REPO_ROOT}/sbom" ]]; then
+        log_info "Collecting SBOMs from repo"
+        find "${REPO_ROOT}/sbom" -name '*.cdx.json' -exec cp {} "${compliance_dir}/sboms/" \; 2>/dev/null || true
+    fi
+
+    if [[ -d "${REPO_ROOT}/docs/evidence" ]]; then
+        log_info "Collecting attestation evidence from repo"
+        find "${REPO_ROOT}/docs/evidence" -name '*.json' -exec cp {} "${compliance_dir}/attestations/" \; 2>/dev/null || true
+    fi
+
+    log_info "Compliance artifacts collected"
 }
 
 ###############################################################################
