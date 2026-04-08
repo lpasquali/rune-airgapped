@@ -124,7 +124,7 @@ find_cosign() {
 }
 # shellcheck disable=SC2329
 
-discover_images() {
+# discover_images() {
     local manifest_file="${BUNDLE_DIR}/manifest.json"
     if [[ -f "${manifest_file}" ]]; then
         # If a manifest.json exists, extract image references from it
