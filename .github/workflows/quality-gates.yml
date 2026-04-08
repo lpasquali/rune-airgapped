@@ -9,144 +9,29 @@ on:
 
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  pull-requests: write
+  id-token: write
+  attestations: write
+  packages: write
 
 jobs:
-  # ─── Reusable: Security scanning (gitleaks) ─────────────────────
   security:
-    name: Security
-    uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@v0.1.0
+    uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@main
 
-  # ─── Reusable: Shell quality (shellcheck, yamllint) ─────────────
   shell:
-    name: Shell
-    uses: lpasquali/rune-ci/.github/workflows/shell-quality.yml@v0.1.0
+    uses: lpasquali/rune-ci/.github/workflows/shell-quality.yml@main
     with:
       script-dirs: "scripts"
 
-  # ─── Validate: YAML, VEX, required files ────────────────────────
   validate:
-    name: RuneGate/Validate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Validate YAML syntax
-        run: python3 scripts/validate_yaml.py
-      - name: Validate OpenVEX documents
-        run: python3 scripts/validate_vex.py
-      - name: Verify required files
-        run: |
-          set -euo pipefail
-          for f in README.md LICENSE SECURITY.md CONTRIBUTING.md; do
-            [ -f "$f" ] || { echo "MISSING: $f"; exit 1; }
-          done
+    uses: lpasquali/rune-ci/.github/workflows/generic-validate.yml@main
+    with:
+      validate-yaml: "scripts/validate_yaml.py"
+      validate-vex: "scripts/validate_vex.py"
 
-  # ─── Process: PR body compliance ────────────────────────────────
-  pr-body-check:
-    name: RuneGate/Process/PR-Body-Compliance
-    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Validate PR body structure
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-        with:
-          script: |
-            const pr = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number,
-            });
-            const body = pr.data.body || '';
-            const errors = [];
-            if (!/[Cc]loses?\s+#\d+|[Ff]ixes?\s+#\d+|[Rr]esolves?\s+#\d+/.test(body)) {
-              errors.push('PR must reference an issue (Closes #NNN, Fixes #NNN, or Resolves #NNN)');
-            }
-            if (!/\[x\]\s+\*\*Level\s+[123]/.test(body)) {
-              errors.push('PR must check exactly one DoD level (Level 1, 2, or 3)');
-            }
-            if (!/## Acceptance Criteria Evidence/.test(body)) {
-              errors.push('PR must include "## Acceptance Criteria Evidence" section');
-            }
-            if (!/## Audit Checks/.test(body)) {
-              errors.push('PR must include "## Audit Checks" section');
-            }
-            if (/## Audit Checks/.test(body) && !/PASS|FAIL|No triggers fired/.test(body)) {
-              errors.push('Audit Checks section must report PASS/FAIL results or state "No triggers fired"');
-            }
-            if (/\|\s*FAIL\s*\|/.test(body)) {
-              errors.push('PR has FAIL audit check results — resolve before merging');
-            }
-            if (!/## Breaking Changes/.test(body)) {
-              errors.push('PR must include "## Breaking Changes" section');
-            }
-            if (errors.length > 0) {
-              const msg = '**PR Body Compliance Check Failed**\n\n' +
-                errors.map(e => `- ${e}`).join('\n') +
-                '\n\nRefer to the PR template and SYSTEM_PROMPT.md for requirements.';
-              core.setFailed(msg);
-              console.log(msg);
-            } else {
-              console.log('PR body compliance check passed.');
-            }
-
-  # ─── Merge gate ─────────────────────────────────────────────────
-  merge-gate:
-    name: Merge Gate
+  compliance:
+    needs: [security, shell, validate]
     if: always()
-    needs:
-      - security
-      - shell
-      - validate
-      - pr-body-check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Evaluate gate results
-        env:
-          NEEDS_JSON: ${{ toJson(needs) }}
-        run: |
-          python3 - <<'PY'
-          import json, os
-          data = json.loads(os.environ['NEEDS_JSON'])
-          failed = [
-              (k, v.get('result'))
-              for k, v in data.items()
-              if v.get('result') not in ('success', 'skipped')
-          ]
-          for k, v in data.items():
-              print(f'{k}: {v.get("result")}')
-          if failed:
-              print('Merge blocked due to failing RuneGate checks:')
-              for item in failed:
-                  print(f'- {item[0]}: {item[1]}')
-              raise SystemExit(1)
-          print('All RuneGate checks passed.')
-          PY
-
-  # ─── ML4 Automated Peer Review ─────────────────────────────────
-  ml4-peer-review:
-    name: RuneGate/Compliance/ML4-Automated-Approval
-    needs: [merge-gate]
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-    steps:
-      - name: Approve PR via Automated Quality Gates
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-        with:
-          script: |
-            // IEC 62443-4-1 ML4 Compensating Control: The automated pipeline acts as the objective peer reviewer.
-            // If this job executes, it guarantees all immutable security, coverage, and SAST checks have passed.
-            await github.rest.pulls.createReview({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number,
-              event: 'APPROVE',
-              body: '✅ **RuneGate Automated Approval**\n\nUnder IEC 62443-4-1 ML4 guidelines, this PR has been automatically approved because it deterministically passed all strict Quality Gates (Coverage > 97%, SAST, SCA, SBOM, and SLSA L3 provenance). This satisfies the objective two-person peer-review requirement.'
-            });
+    uses: lpasquali/rune-ci/.github/workflows/pr-compliance.yml@main
+    with:
+      needs-json: ${{ toJson(needs) }}
