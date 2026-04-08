@@ -9,6 +9,6 @@ on:
 
 jobs:
   sync:
-    uses: lpasquali/rune-ci/.github/workflows/project-sync.yml@main
+    uses: lpasquali/rune-ci/.github/workflows/project-sync-logic.yml@main
     secrets:
       PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
