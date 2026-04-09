@@ -16,15 +16,15 @@ permissions:
 
 jobs:
   security:
-    uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@main
+    uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@b242495fb92b046879c9e0ecb8e88a0e89e0e7d5 # main
 
   shell:
-    uses: lpasquali/rune-ci/.github/workflows/shell-quality.yml@main
+    uses: lpasquali/rune-ci/.github/workflows/shell-quality.yml@b242495fb92b046879c9e0ecb8e88a0e89e0e7d5 # main
     with:
       script-dirs: "scripts"
 
   validate:
-    uses: lpasquali/rune-ci/.github/workflows/generic-validate.yml@main
+    uses: lpasquali/rune-ci/.github/workflows/generic-validate.yml@b242495fb92b046879c9e0ecb8e88a0e89e0e7d5 # main
     with:
       validate-yaml: "scripts/validate_yaml.py"
       validate-vex: "scripts/validate_vex.py"
@@ -32,6 +32,6 @@ jobs:
   compliance:
     needs: [security, shell, validate]
     if: always()
-    uses: lpasquali/rune-ci/.github/workflows/pr-compliance.yml@main
+    uses: lpasquali/rune-ci/.github/workflows/pr-compliance.yml@b242495fb92b046879c9e0ecb8e88a0e89e0e7d5 # main
     with:
       needs-json: ${{ toJson(needs) }}

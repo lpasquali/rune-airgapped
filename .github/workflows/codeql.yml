@@ -16,6 +16,6 @@ permissions:
 
 jobs:
   analyze:
-    uses: lpasquali/rune-ci/.github/workflows/codeql.yml@main
+    uses: lpasquali/rune-ci/.github/workflows/codeql.yml@b242495fb92b046879c9e0ecb8e88a0e89e0e7d5 # main
     with:
       language: "python"
