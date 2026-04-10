@@ -122,27 +122,6 @@ find_cosign() {
     log_error "cosign binary not found. Bundle it under <bundle>/tools/cosign or install it."
     exit 1
 }
-# shellcheck disable=SC2329
-
-# discover_images() {
-    local manifest_file="${BUNDLE_DIR}/manifest.json"
-    if [[ -f "${manifest_file}" ]]; then
-        # If a manifest.json exists, extract image references from it
-        log_info "Discovering images from ${manifest_file}"
-        # Use python3 for JSON parsing (available on most systems)
-        python3 -c "
-import json, sys
-with open('${manifest_file}') as f:
-    data = json.load(f)
-images = data.get('images', [])
-for img in images:
-    print(img.get('name', ''))
-" 2>/dev/null && return
-    fi
-
-    # Fall back to known RUNE image list
-    log_info "Using default RUNE image list"
-}
 
 verify_image() {
     local image_ref="$1"
