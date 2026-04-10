@@ -1,0 +1,14 @@
+# Example overlay: enable the optional PostgreSQL subchart for air-gapped installs.
+#
+# The bundle includes docker.io/library/postgres:17-alpine. Bootstrap loads it into the
+# local registry as postgres:latest (basename of the image reference). Override image
+# registry/repository/tag in your values to match that layout and your rune-charts version.
+#
+#   ./scripts/bootstrap.sh --bundle /path/to/bundle.tar.gz --values /path/to/overlay.yaml
+---
+postgres:
+  enabled: true
+  # Example image override (uncomment and align keys with your chart):
+  # image:
+  #   repository: rune-registry.rune-registry.svc:5000/postgres
+  #   tag: latest
