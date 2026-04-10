@@ -43,6 +43,8 @@ Bundle flags:
 | `--sign` | Sign images with cosign (requires `COSIGN_KEY` env or `--cosign-key`) |
 | `--dry-run` | List bundle contents without pulling anything |
 
+Every bundle includes **docker.io/library/postgres:17-alpine** for air-gapped installs that enable the optional first-party PostgreSQL subchart in rune-charts. On a real build, `build-bundle.sh` resolves the image to an OCI digest via `crane`, pulls that pinned reference, and writes `images/postgres/bundle-meta.json` (source tag, digest, license label when present, and a short provenance note). The same fields are merged into `manifest.json` under the `postgres` image entry.
+
 ### Verifying the Bundle
 
 Before deployment, verify the bundle checksum against the value published in
@@ -293,3 +295,30 @@ must re-deploy the old bundle first:
 ```
 
 Then perform the Helm rollback.
+
+## 9. PostgreSQL (air-gapped)
+
+To run the API against an in-cluster database instead of an external DSN, enable the PostgreSQL subchart in your Helm values (see rune-charts for the exact value paths for your version). The bundle already contains the **postgres:17-alpine** image.
+
+1. Build or obtain a bundle as usual; confirm `build-bundle.sh --dry-run` lists `docker.io/library/postgres:17-alpine`.
+2. After bootstrap, the registry hosts that image as **`postgres:latest`** (bootstrap pushes each bundled layout using the image directory basename and the `latest` tag). Point the postgres subchart at your local registry, for example:
+
+   ```yaml
+   postgres:
+     enabled: true
+     image:
+       repository: rune-registry.rune-registry.svc:5000/postgres
+       tag: latest
+   ```
+
+3. Pass your overlay when bootstrapping:
+
+   ```bash
+   ./scripts/bootstrap.sh \
+     --bundle /path/to/rune-bundle-v0.0.0a2.tar.gz \
+     --values /path/to/values-with-postgres.yaml
+   ```
+
+4. For auditing, open `manifest.json` in the unpacked bundle (or tarball) and locate the `postgres` image entry for `source_ref`, `digest`, `license`, and `provenance`, or read `images/postgres/bundle-meta.json` directly.
+
+If you use an **external** database instead, leave `postgres.enabled` false and configure the data source URL and credentials per rune-charts / your security process.

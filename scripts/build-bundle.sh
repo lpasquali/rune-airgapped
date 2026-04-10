@@ -16,7 +16,7 @@
 #     --include-ollama \
 #     --sign
 #
-# Dependencies: crane, helm, cosign (optional), sha256sum, tar
+# Dependencies: crane, helm, python3, cosign (optional), sha256sum, tar
 # Exit codes: 0 success, 1 error
 
 set -euo pipefail
@@ -47,6 +47,9 @@ readonly -a INFRA_IMAGES=(
     "ghcr.io/project-zot/zot-linux-amd64:v2.1.2"
 )
 
+# Bundled PostgreSQL (official library image; matches optional rune-charts postgres subchart)
+readonly POSTGRES_IMAGE="docker.io/library/postgres:17-alpine"
+
 # Optional images (added via flags)
 readonly OLLAMA_IMAGE="docker.io/ollama/ollama:latest"
 readonly SEAWEEDFS_IMAGE="docker.io/chrislusf/seaweedfs:latest"
@@ -73,6 +76,8 @@ DRY_RUN=false
 COSIGN_KEY=""
 WORK_DIR=""
 VERBOSE=false
+# Set in main() before pull: digest-pinned ref for reproducible PostgreSQL pulls (empty in --dry-run)
+POSTGRES_PULL_REF=""
 
 ###############################################################################
 # Logging
@@ -112,6 +117,11 @@ Optional:
   --dry-run              List what would be bundled without pulling anything
   --verbose              Enable verbose output
   -h, --help             Show this help message
+
+PostgreSQL:
+  The bundle always includes docker.io/library/postgres:17-alpine for air-gapped
+  installs with postgres.enabled=true. On real builds the image is pull-pinned
+  using a digest resolved at build time (see manifest.json and images/postgres/bundle-meta.json).
 
 Environment:
   COSIGN_KEY             Path to cosign private key (used with --sign)
@@ -175,7 +185,7 @@ parse_args() {
 check_prerequisites() {
     local missing=()
 
-    for cmd in crane tar sha256sum; do
+    for cmd in crane tar sha256sum python3; do
         if ! command -v "$cmd" &>/dev/null; then
             missing+=("$cmd")
         fi
@@ -199,6 +209,15 @@ check_prerequisites() {
 # Image list builder
 ###############################################################################
 
+# OCI reference basename for bundle directory layout (handles :tag and @digest)
+bundle_dir_name_from_ref() {
+    local ref="$1"
+    local base="${ref##*/}"
+    base="${base%%@*}"
+    base="${base%%:*}"
+    printf '%s' "${base}"
+}
+
 build_image_list() {
     local images=()
 
@@ -211,6 +230,9 @@ build_image_list() {
     for img in "${INFRA_IMAGES[@]}"; do
         images+=("$img")
     done
+
+    # PostgreSQL (digest-pinned on real builds; tag shown in --dry-run)
+    images+=("${POSTGRES_PULL_REF:-${POSTGRES_IMAGE}}")
 
     # Optional images
     if [[ "${INCLUDE_OLLAMA}" == true ]]; then
@@ -254,6 +276,7 @@ do_dry_run() {
     echo "  - compliance/sboms/ (CycloneDX SBOM per image)"
     echo "  - compliance/vex/ (aggregated VEX documents)"
     echo "  - compliance/attestations/ (SLSA provenance per image)"
+    echo "  - images/postgres/bundle-meta.json (full builds: PostgreSQL digest, license, provenance)"
     echo ""
 
     if [[ "${SIGN}" == true ]]; then
@@ -287,7 +310,7 @@ pull_images() {
 
     while IFS= read -r img; do
         local img_name
-        img_name="$(echo "${img}" | sed 's|.*/||; s|:.*||')"
+        img_name="$(bundle_dir_name_from_ref "${img}")"
         local img_dir="${images_dir}/${img_name}"
         mkdir -p "${img_dir}"
 
@@ -306,9 +329,66 @@ pull_images() {
                 log_warn "Failed to pull ${img} for ${platform} (may not exist yet)"
             fi
         done
+
+        if [[ "${img_name}" == "postgres" ]]; then
+            write_postgres_bundle_meta "${staging_dir}" "${img}" "${POSTGRES_IMAGE}"
+        fi
     done <<< "${images}"
 
     log_info "Image pull complete"
+}
+
+# Record PostgreSQL source tag, pinned digest, license label, and provenance for manifest.json
+write_postgres_bundle_meta() {
+    local staging_dir="$1"
+    local pull_ref="$2"
+    local source_ref="$3"
+    local meta_dir="${staging_dir}/images/postgres"
+
+    [[ -d "${meta_dir}" ]] || return 0
+
+    export _BUNDLE_PG_PULL="${pull_ref}"
+    export _BUNDLE_PG_SOURCE="${source_ref}"
+    export _BUNDLE_PG_META_OUT="${meta_dir}/bundle-meta.json"
+
+    python3 <<'PY'
+import json
+import os
+import subprocess
+
+pull = os.environ["_BUNDLE_PG_PULL"]
+source = os.environ["_BUNDLE_PG_SOURCE"]
+out_path = os.environ["_BUNDLE_PG_META_OUT"]
+
+digest = ""
+if "@" in pull:
+    digest = pull.split("@", 1)[1]
+else:
+    try:
+        digest = subprocess.check_output(["crane", "digest", pull], text=True, timeout=120).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        digest = ""
+
+license = ""
+try:
+    raw = subprocess.check_output(["crane", "config", pull], text=True, timeout=120)
+    cfg = json.loads(raw).get("config") or {}
+    labels = cfg.get("Labels") or {}
+    license = labels.get("org.opencontainers.image.licenses") or labels.get("license") or ""
+except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError, subprocess.TimeoutExpired):
+    pass
+
+meta = {
+    "source_ref": source,
+    "pull_ref": pull,
+    "digest": digest,
+    "license": license or "PostgreSQL — see upstream image documentation",
+    "provenance": "Official Docker Hub library image (postgres:17-alpine); OCI digest pinned at bundle build time via crane.",
+}
+
+with open(out_path, "w", encoding="utf-8") as f:
+    json.dump(meta, f, indent=2)
+PY
 }
 
 ###############################################################################
@@ -415,18 +495,33 @@ generate_manifest() {
     local images_json="[]"
     local charts_json="[]"
 
-    # Collect image entries
+    # Collect image entries (merge bundle-meta.json when present, e.g. PostgreSQL digest/license)
     if [[ -d "${staging_dir}/images" ]]; then
-        local img_entries=()
-        while IFS= read -r img_dir; do
-            local img_name
-            img_name="$(basename "${img_dir}")"
-            img_entries+=("{\"name\":\"${img_name}\",\"path\":\"images/${img_name}\"}")
-        done < <(find "${staging_dir}/images" -mindepth 1 -maxdepth 1 -type d | sort)
+        export _GEN_MANIFEST_STAGING="${staging_dir}"
+        images_json="$(python3 <<'PY'
+import glob
+import json
+import os
 
-        if [[ ${#img_entries[@]} -gt 0 ]]; then
-            images_json="[$(IFS=,; echo "${img_entries[*]}")]"
-        fi
+staging = os.environ["_GEN_MANIFEST_STAGING"]
+entries = []
+for path in sorted(glob.glob(os.path.join(staging, "images", "*"))):
+    if not os.path.isdir(path):
+        continue
+    name = os.path.basename(path)
+    entry = {"name": name, "path": f"images/{name}"}
+    meta_path = os.path.join(path, "bundle-meta.json")
+    if os.path.isfile(meta_path):
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+        for key in ("source_ref", "pull_ref", "digest", "license", "provenance"):
+            val = meta.get(key)
+            if val:
+                entry[key] = val
+    entries.append(entry)
+print(json.dumps(entries))
+PY
+)"
     fi
 
     # Collect chart entries
@@ -535,6 +630,17 @@ main() {
     fi
 
     check_prerequisites
+
+    # Pin PostgreSQL to an OCI digest at build time (reproducible pulls; metadata in bundle-meta.json)
+    POSTGRES_PULL_REF="${POSTGRES_IMAGE}"
+    local pg_digest=""
+    pg_digest="$(crane digest "${POSTGRES_IMAGE}" 2>/dev/null)" || true
+    if [[ -n "${pg_digest}" ]]; then
+        POSTGRES_PULL_REF="docker.io/library/postgres@${pg_digest}"
+        log_info "PostgreSQL image pinned: ${POSTGRES_PULL_REF}"
+    else
+        log_warn "Could not resolve digest for ${POSTGRES_IMAGE}; pulling by tag"
+    fi
 
     # Create staging directory
     WORK_DIR="$(mktemp -d -t rune-bundle-XXXXXX)"

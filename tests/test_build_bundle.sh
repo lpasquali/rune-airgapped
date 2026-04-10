@@ -119,6 +119,7 @@ test_dry_run_mode() {
     assert_contains "dry run shows rune image" "ghcr.io/lpasquali/rune" "${output}"
     assert_contains "dry run shows operator image" "ghcr.io/lpasquali/rune-operator" "${output}"
     assert_contains "dry run shows zot image" "zot-linux-amd64" "${output}"
+    assert_contains "dry run shows postgres image" "library/postgres:17-alpine" "${output}"
 }
 
 test_dry_run_with_ollama() {

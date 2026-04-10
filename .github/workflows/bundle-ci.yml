@@ -132,6 +132,13 @@ jobs:
             echo "PASS: Found image '${image}'"
           done
 
+          # Bundled PostgreSQL (airgapped postgres.enabled installs)
+          if ! grep -q "library/postgres:17-alpine" "${OUTPUT}"; then
+            echo "FAIL: Missing postgres image in dry-run output"
+            exit 1
+          fi
+          echo "PASS: Found bundled PostgreSQL image"
+
           # Must mention SHA256SUMS and manifest.json
           for artifact in "SHA256SUMS" "manifest.json"; do
             if ! grep -q "${artifact}" "${OUTPUT}"; then
