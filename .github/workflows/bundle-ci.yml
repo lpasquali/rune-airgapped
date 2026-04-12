@@ -313,6 +313,6 @@ jobs:
     name: "Merge Gate"
     if: always()
     needs: [validate-scripts, unit-tests, build-bundle, checksum-verify]
-    uses: lpasquali/rune-ci/.github/workflows/merge-gate-from-needs.yml@40149ab6e8d7305f01d31d3e53caa4da1361177b
+    uses: lpasquali/rune-ci/.github/workflows/merge-gate-from-needs.yml@9f939b2c28317b6f55c1913c6a6485bd91e1bda5
     with:
       needs-json: ${{ toJson(needs) }}
