@@ -307,28 +307,12 @@ jobs:
           echo "--- All manifest validations passed ---"
 
   # ---------------------------------------------------------------------------
-  # Merge gate: aggregates all job results
+  # Merge gate: shared policy (rune-ci)
   # ---------------------------------------------------------------------------
   merge-gate:
     name: "Merge Gate"
     if: always()
     needs: [validate-scripts, unit-tests, build-bundle, checksum-verify]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check job results
-        run: |
-          echo "=== Merge Gate ==="
-          echo "validate-scripts: ${{ needs.validate-scripts.result }}"
-          echo "unit-tests:       ${{ needs.unit-tests.result }}"
-          echo "build-bundle:     ${{ needs.build-bundle.result }}"
-          echo "checksum-verify:  ${{ needs.checksum-verify.result }}"
-
-          if [[ "${{ needs.validate-scripts.result }}" != "success" ]] || \
-             [[ "${{ needs.unit-tests.result }}" != "success" ]] || \
-             [[ "${{ needs.build-bundle.result }}" != "success" ]] || \
-             [[ "${{ needs.checksum-verify.result }}" != "success" ]]; then
-            echo "FAIL: One or more jobs did not succeed"
-            exit 1
-          fi
-
-          echo "PASS: All jobs succeeded"
+    uses: lpasquali/rune-ci/.github/workflows/merge-gate-from-needs.yml@40149ab6e8d7305f01d31d3e53caa4da1361177b
+    with:
+      needs-json: ${{ toJson(needs) }}
