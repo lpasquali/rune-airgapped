@@ -24,7 +24,7 @@ jobs:
       script-dirs: "scripts"
 
   validate:
-    uses: lpasquali/rune-ci/.github/workflows/generic-validate.yml@9f939b2c28317b6f55c1913c6a6485bd91e1bda5 # main
+    uses: lpasquali/rune-ci/.github/workflows/generic-validate.yml@4f45a889234bed748d7a20bb09bf4e7615219e2d # main
     with:
       validate-yaml: "scripts/validate_yaml.py"
       validate-vex: "scripts/validate_vex.py"
