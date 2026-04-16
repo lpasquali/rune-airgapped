@@ -119,7 +119,26 @@ test_dry_run_mode() {
     assert_contains "dry run shows rune image" "ghcr.io/lpasquali/rune" "${output}"
     assert_contains "dry run shows operator image" "ghcr.io/lpasquali/rune-operator" "${output}"
     assert_contains "dry run shows zot image" "zot-linux-amd64" "${output}"
-    assert_contains "dry run shows postgres image" "library/postgres:17-alpine" "${output}"
+    # Default bundle (production model) does NOT include postgres; use --include-postgres for optional in-cluster postgres
+    if [[ "${output}" == *"library/postgres:17-alpine"* ]]; then
+        echo "  FAIL: default bundle should not include postgres (it's opt-in via --include-postgres)"
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+    else
+        echo "  PASS: dry run default bundle does not include postgres"
+        PASS_COUNT=$((PASS_COUNT + 1))
+    fi
+}
+
+test_dry_run_with_postgres() {
+    echo "--- test_dry_run_with_postgres ---"
+    local output
+    output="$(bash "${SCRIPT_UNDER_TEST}" \
+        --tag v0.0.0a2 \
+        --output /tmp/test-bundle.tar.gz \
+        --include-postgres \
+        --dry-run 2>&1)" || true
+
+    assert_contains "dry run with postgres shows postgres image" "library/postgres:17-alpine" "${output}"
 }
 
 test_dry_run_with_ollama() {
@@ -183,6 +202,7 @@ test_missing_tag
 test_missing_output
 test_unknown_option
 test_dry_run_mode
+test_dry_run_with_postgres
 test_dry_run_with_ollama
 test_dry_run_with_sign
 test_dry_run_architectures
