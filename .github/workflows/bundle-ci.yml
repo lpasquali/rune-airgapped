@@ -103,6 +103,7 @@ jobs:
           bash scripts/build-bundle.sh \
             --tag "${{ steps.version.outputs.tag }}" \
             --output /tmp/rune-bundle-ci.tar.gz \
+            --include-postgres \
             --include-ollama \
             --include-seaweedfs \
             --sign \
