@@ -54,6 +54,14 @@ readonly POSTGRES_IMAGE="docker.io/library/postgres:17-alpine"
 readonly OLLAMA_IMAGE="docker.io/ollama/ollama:latest"
 readonly SEAWEEDFS_IMAGE="docker.io/chrislusf/seaweedfs:latest"
 
+# Crossplane and Functions/Providers (optional; for Infrastructure Provisioning)
+readonly -a CROSSPLANE_IMAGES=(
+    "ghcr.io/crossplane/crossplane:v2.2.0"
+    "xpkg.upbound.io/crossplane-contrib/provider-kubernetes:v1.2.1"
+    "xpkg.upbound.io/crossplane-contrib/function-patch-and-transform:v0.8.1"
+    "xpkg.upbound.io/crossplane-contrib/function-go-templating:v0.7.1"
+)
+
 # Helm charts (OCI artifacts from rune-charts)
 readonly -a HELM_CHARTS=(
     "rune"
@@ -72,6 +80,7 @@ ARCH="amd64,arm64"
 INCLUDE_POSTGRES=false
 INCLUDE_OLLAMA=false
 INCLUDE_SEAWEEDFS=false
+INCLUDE_CROSSPLANE=false
 SIGN=false
 DRY_RUN=false
 COSIGN_KEY=""
@@ -114,6 +123,7 @@ Optional:
   --include-postgres     Include PostgreSQL image for in-cluster deployments (opt-in; default: not included)
   --include-ollama       Include Ollama inference server image
   --include-seaweedfs    Include SeaweedFS S3-compatible storage image
+  --include-crossplane   Include Crossplane infrastructure provisioning layer
   --sign                 Sign images with cosign (requires COSIGN_KEY env var)
   --cosign-key FILE      Path to cosign private key (alternative to COSIGN_KEY env)
   --dry-run              List what would be bundled without pulling anything
@@ -152,6 +162,7 @@ parse_args() {
             --include-postgres)  INCLUDE_POSTGRES=true; shift ;;
             --include-ollama)    INCLUDE_OLLAMA=true; shift ;;
             --include-seaweedfs) INCLUDE_SEAWEEDFS=true; shift ;;
+            --include-crossplane) INCLUDE_CROSSPLANE=true; shift ;;
             --sign)       SIGN=true; shift ;;
             --cosign-key) COSIGN_KEY="$2"; shift 2 ;;
             --dry-run)    DRY_RUN=true; shift ;;
@@ -251,6 +262,13 @@ build_image_list() {
 
     if [[ "${INCLUDE_SEAWEEDFS}" == true ]]; then
         images+=("${SEAWEEDFS_IMAGE}")
+    fi
+
+    # Crossplane (optional; infrastructure provisioning)
+    if [[ "${INCLUDE_CROSSPLANE}" == true ]]; then
+        for img in "${CROSSPLANE_IMAGES[@]}"; do
+            images+=("$img")
+        done
     fi
 
     printf '%s\n' "${images[@]}"
@@ -691,3 +709,4 @@ main() {
 }
 
 main "$@"
+
