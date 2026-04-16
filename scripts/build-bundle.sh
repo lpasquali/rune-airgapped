@@ -69,6 +69,7 @@ readonly HELM_CHART_REGISTRY="ghcr.io/lpasquali/rune-charts"
 TAG=""
 OUTPUT=""
 ARCH="amd64,arm64"
+INCLUDE_POSTGRES=false
 INCLUDE_OLLAMA=false
 INCLUDE_SEAWEEDFS=false
 SIGN=false
@@ -110,6 +111,7 @@ Required:
 
 Optional:
   --arch ARCH            Target architectures, comma-separated (default: amd64,arm64)
+  --include-postgres     Include PostgreSQL image for in-cluster deployments (opt-in; default: not included)
   --include-ollama       Include Ollama inference server image
   --include-seaweedfs    Include SeaweedFS S3-compatible storage image
   --sign                 Sign images with cosign (requires COSIGN_KEY env var)
@@ -118,10 +120,15 @@ Optional:
   --verbose              Enable verbose output
   -h, --help             Show this help message
 
-PostgreSQL:
-  The bundle always includes docker.io/library/postgres:17-alpine for air-gapped
-  installs with postgres.enabled=true. On real builds the image is pull-pinned
-  using a digest resolved at build time (see manifest.json and images/postgres/bundle-meta.json).
+Production deployment (recommended):
+  The default bundle contains RUNE suite images only (rune, rune-operator, rune-ui,
+  and supporting infrastructure). For production, provision PostgreSQL externally
+  (CNPG, managed database) and configure via RUNE_DB_URL Secret.
+
+Optional images for development/lab:
+  Use --include-postgres for air-gapped labs that need in-cluster PostgreSQL.
+  On real builds the image is pull-pinned using a digest resolved at build time
+  (see manifest.json and images/postgres/bundle-meta.json).
 
 Environment:
   COSIGN_KEY             Path to cosign private key (used with --sign)
@@ -142,6 +149,7 @@ parse_args() {
             --tag)        TAG="$2"; shift 2 ;;
             --output)     OUTPUT="$2"; shift 2 ;;
             --arch)       ARCH="$2"; shift 2 ;;
+            --include-postgres)  INCLUDE_POSTGRES=true; shift ;;
             --include-ollama)    INCLUDE_OLLAMA=true; shift ;;
             --include-seaweedfs) INCLUDE_SEAWEEDFS=true; shift ;;
             --sign)       SIGN=true; shift ;;
@@ -231,8 +239,10 @@ build_image_list() {
         images+=("$img")
     done
 
-    # PostgreSQL (digest-pinned on real builds; tag shown in --dry-run)
-    images+=("${POSTGRES_PULL_REF:-${POSTGRES_IMAGE}}")
+    # PostgreSQL (optional; digest-pinned on real builds; tag shown in --dry-run)
+    if [[ "${INCLUDE_POSTGRES}" == true ]]; then
+        images+=("${POSTGRES_PULL_REF:-${POSTGRES_IMAGE}}")
+    fi
 
     # Optional images
     if [[ "${INCLUDE_OLLAMA}" == true ]]; then
@@ -631,15 +641,17 @@ main() {
 
     check_prerequisites
 
-    # Pin PostgreSQL to an OCI digest at build time (reproducible pulls; metadata in bundle-meta.json)
-    POSTGRES_PULL_REF="${POSTGRES_IMAGE}"
-    local pg_digest=""
-    pg_digest="$(crane digest "${POSTGRES_IMAGE}" 2>/dev/null)" || true
-    if [[ -n "${pg_digest}" ]]; then
-        POSTGRES_PULL_REF="docker.io/library/postgres@${pg_digest}"
-        log_info "PostgreSQL image pinned: ${POSTGRES_PULL_REF}"
-    else
-        log_warn "Could not resolve digest for ${POSTGRES_IMAGE}; pulling by tag"
+    # Pin PostgreSQL to an OCI digest at build time if included (reproducible pulls; metadata in bundle-meta.json)
+    if [[ "${INCLUDE_POSTGRES}" == true ]]; then
+        POSTGRES_PULL_REF="${POSTGRES_IMAGE}"
+        local pg_digest=""
+        pg_digest="$(crane digest "${POSTGRES_IMAGE}" 2>/dev/null)" || true
+        if [[ -n "${pg_digest}" ]]; then
+            POSTGRES_PULL_REF="docker.io/library/postgres@${pg_digest}"
+            log_info "PostgreSQL image pinned: ${POSTGRES_PULL_REF}"
+        else
+            log_warn "Could not resolve digest for ${POSTGRES_IMAGE}; pulling by tag"
+        fi
     fi
 
     # Create staging directory

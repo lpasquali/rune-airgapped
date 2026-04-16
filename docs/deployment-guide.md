@@ -21,13 +21,23 @@ The bundle is built on a connected workstation using `build-bundle.sh` and
 transferred to the air-gapped environment via approved media (USB, DVD, or
 one-way data diode).
 
+**Production deployment** (recommended):
 ```bash
-# On the connected build host:
+# Default bundle: RUNE suite only (no bundled data-plane services)
 ./scripts/build-bundle.sh \
   --tag v0.0.0a2 \
   --output rune-bundle-v0.0.0a2.tar.gz \
   --arch amd64 \
-  --include-ollama \
+  --sign
+```
+
+**Development/lab** (with optional PostgreSQL):
+```bash
+./scripts/build-bundle.sh \
+  --tag v0.0.0a2 \
+  --output rune-bundle-v0.0.0a2.tar.gz \
+  --arch amd64 \
+  --include-postgres \
   --sign
 ```
 
@@ -38,12 +48,15 @@ Bundle flags:
 | `--tag` | RUNE version tag (required) |
 | `--output` | Output tarball path (required) |
 | `--arch` | Target architectures, comma-separated (default: `amd64,arm64`) |
-| `--include-ollama` | Include Ollama inference server image |
-| `--include-seaweedfs` | Include SeaweedFS S3-compatible storage image |
+| `--include-postgres` | (Optional) Include PostgreSQL image for in-cluster deployments (dev/lab only) |
+| `--include-ollama` | (Optional) Include Ollama inference server image |
+| `--include-seaweedfs` | (Optional) Include SeaweedFS S3-compatible storage image |
 | `--sign` | Sign images with cosign (requires `COSIGN_KEY` env or `--cosign-key`) |
 | `--dry-run` | List bundle contents without pulling anything |
 
-Every bundle includes **docker.io/library/postgres:17-alpine** for air-gapped installs that enable the optional first-party PostgreSQL subchart in rune-charts. On a real build, `build-bundle.sh` resolves the image to an OCI digest via `crane`, pulls that pinned reference, and writes `images/postgres/bundle-meta.json` (source tag, digest, license label when present, and a short provenance note). The same fields are merged into `manifest.json` under the `postgres` image entry.
+**Default bundle contents**: RUNE suite (rune, rune-operator, rune-ui) + infrastructure (nginx, Zot registry).
+
+**Optional images** (dev/lab): PostgreSQL (via `--include-postgres`), Ollama, SeaweedFS. When included, `build-bundle.sh` resolves the image to an OCI digest via `crane`, pulls that pinned reference, and writes `images/<service>/bundle-meta.json` with source tag, digest, license, and provenance. The same fields are merged into `manifest.json`.
 
 ### Verifying the Bundle
 
@@ -296,12 +309,31 @@ must re-deploy the old bundle first:
 
 Then perform the Helm rollback.
 
-## 9. PostgreSQL (air-gapped)
+## 9. PostgreSQL (optional, development/lab only)
 
-To run the API against an in-cluster database instead of an external DSN, enable the PostgreSQL subchart in your Helm values (see rune-charts for the exact value paths for your version). The bundle already contains the **postgres:17-alpine** image.
+**Production deployments** should use an externally provisioned PostgreSQL instance (CNPG, managed database, or customer-operated). Configure via the `RUNE_DB_URL` Secret. See [docs/prerequisites.md](prerequisites.md) for database setup examples.
 
-1. Build or obtain a bundle as usual; confirm `build-bundle.sh --dry-run` lists `docker.io/library/postgres:17-alpine`.
-2. After bootstrap, the registry hosts that image as **`postgres:latest`** (bootstrap pushes each bundled layout using the image directory basename and the `latest` tag). Point the postgres subchart at your local registry, for example:
+**For development/lab** environments that need an in-cluster PostgreSQL:
+
+1. Build the bundle with `--include-postgres`:
+   ```bash
+   ./scripts/build-bundle.sh \
+     --tag v0.0.0a2 \
+     --output rune-bundle-v0.0.0a2.tar.gz \
+     --include-postgres \
+     --arch amd64
+   ```
+
+2. Confirm the bundle contains the PostgreSQL image:
+   ```bash
+   ./scripts/build-bundle.sh \
+     --tag v0.0.0a2 \
+     --output /tmp/test.tar.gz \
+     --include-postgres \
+     --dry-run | grep postgres
+   ```
+
+3. After bootstrap, the registry hosts the postgres image as **`postgres:latest`**. Enable the PostgreSQL subchart in your Helm values:
 
    ```yaml
    postgres:
@@ -311,7 +343,7 @@ To run the API against an in-cluster database instead of an external DSN, enable
        tag: latest
    ```
 
-3. Pass your overlay when bootstrapping:
+4. Pass your overlay when bootstrapping:
 
    ```bash
    ./scripts/bootstrap.sh \
@@ -319,6 +351,10 @@ To run the API against an in-cluster database instead of an external DSN, enable
      --values /path/to/values-with-postgres.yaml
    ```
 
-4. For auditing, open `manifest.json` in the unpacked bundle (or tarball) and locate the `postgres` image entry for `source_ref`, `digest`, `license`, and `provenance`, or read `images/postgres/bundle-meta.json` directly.
+5. For auditing, open `manifest.json` in the unpacked bundle (or tarball) and locate the `postgres` image entry for `source_ref`, `digest`, `license`, and `provenance`, or read `images/postgres/bundle-meta.json` directly.
 
-If you use an **external** database instead, leave `postgres.enabled` false and configure the data source URL and credentials per rune-charts / your security process.
+### External PostgreSQL (production path)
+
+If using an external database, leave `postgres.enabled` false and configure:
+- `RUNE_DB_URL`: Kubernetes Secret with connection string (e.g., `postgresql://user:pass@postgres.example.com:5432/rune`)
+- See rune-charts for the exact value paths for your version

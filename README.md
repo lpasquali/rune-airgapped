@@ -2,7 +2,9 @@
 
 Airgapped deployment bundler for the RUNE platform.
 
-The OCI bundle includes **docker.io/library/postgres:17-alpine** so disconnected clusters can deploy RUNE with the optional in-chart PostgreSQL subchart (`postgres.enabled=true`). See [docs/deployment-guide.md](docs/deployment-guide.md#9-postgresql-air-gapped) and `values/postgres-airgapped.example.yaml`.
+The default OCI bundle contains **RUNE suite images only** (rune, rune-operator, rune-ui, and supporting infrastructure). For **production**, provision PostgreSQL externally (CNPG, managed database) and configure via `RUNE_DB_URL` Secret. See [docs/deployment-guide.md](docs/deployment-guide.md) and [prerequisites matrix](docs/prerequisites.md).
+
+For **development/lab** environments that need in-cluster PostgreSQL, build the bundle with `--include-postgres` flag. See [docs/deployment-guide.md#postgresql-optional](docs/deployment-guide.md#9-postgresql-optional) for details.
 
 ## 📖 Documentation
 All documentation is consolidated in the **[RUNE Documentation Site](https://lpasquali.github.io/rune-docs/)**.
