@@ -32,6 +32,6 @@ jobs:
   compliance:
     needs: [security, shell, validate]
     if: always()
-    uses: lpasquali/rune-ci/.github/workflows/pr-compliance.yml@9f939b2c28317b6f55c1913c6a6485bd91e1bda5 # main
+    uses: lpasquali/rune-ci/.github/workflows/pr-compliance.yml@4f45a889234bed748d7a20bb09bf4e7615219e2d # main
     with:
       needs-json: ${{ toJson(needs) }}
