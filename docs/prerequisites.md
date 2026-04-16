@@ -166,6 +166,187 @@ security posture. Supported CNI plugins:
 Use `--no-network-policies` if your CNI does not support NetworkPolicy or if
 you manage network segmentation externally.
 
+## External Services (Production Airgap Model)
+
+For production airgapped deployments, the following external services are **required prerequisites** (not included in the OCI bundle):
+
+### PostgreSQL (Database)
+
+RUNE requires a PostgreSQL instance for persistent data storage. Choose one approach:
+
+#### Option 1: CNPG Operator (Recommended for Kubernetes)
+
+Deploy CloudNative PG operator on the target cluster:
+
+```bash
+# Install CNPG operator (must be done separately, not in RUNE bundle)
+kubectl apply -f https://releases.cnpg.io/downloads/cnpg-1.22.0.yaml
+
+# After operator is running, create a Postgres cluster
+kubectl apply -f - <<EOF
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: rune-postgres
+  namespace: rune
+spec:
+  instances: 3
+  primaryUpdateStrategy: unsupervised
+  postgresql:
+    parameters:
+      shared_preload_libraries: ''
+  bootstrap:
+    initdb:
+      database: rune
+      owner: rune
+      secret:
+        name: rune-db-secret
+  storage:
+    size: 50Gi
+EOF
+
+# Create Kubernetes Secret with connection string
+kubectl create secret generic rune-db-secret \
+  -n rune \
+  --from-literal=username=rune \
+  --from-literal=password=$(openssl rand -base64 32) \
+  --from-literal=RUNE_DB_URL="postgresql://rune:$(openssl rand -base64 32)@rune-postgres-rw.rune.svc.cluster.local:5432/rune"
+```
+
+#### Option 2: External Managed Database (AWS RDS, Cloud SQL, etc.)
+
+Provision the database outside the cluster and create a Kubernetes Secret:
+
+```bash
+# Create Secret with external database connection string
+kubectl create secret generic rune-db-secret \
+  -n rune \
+  --from-literal=RUNE_DB_URL="postgresql://username:password@db.example.com:5432/rune"
+```
+
+**Secret format**: The `RUNE_DB_URL` must be a valid PostgreSQL connection string:
+```
+postgresql://username:password@hostname:port/database
+```
+
+#### Requirements
+
+- PostgreSQL 13+ (or compatible fork)
+- Database named `rune` (or configured in RUNE_DB_URL)
+- User with full permissions on the `rune` database
+- Network connectivity from RUNE pods to the database
+- (Optional) SSL/TLS for encrypted connections
+
+### S3-Compatible Object Storage
+
+RUNE uses S3-compatible storage for artifact and benchmark data. Choose one approach:
+
+#### Option 1: Minio (In-Cluster or External)
+
+Deploy Minio as a separate service:
+
+```bash
+# Deploy Minio in the cluster (example using Helm)
+helm repo add minio https://charts.min.io
+helm install minio minio/minio \
+  --namespace minio --create-namespace \
+  --set rootUser=minioadmin \
+  --set rootPassword=$(openssl rand -base64 32) \
+  --set persistence.size=100Gi
+
+# Create S3 credentials Secret
+kubectl create secret generic rune-s3-secret \
+  -n rune \
+  --from-literal=AWS_ACCESS_KEY_ID=minioadmin \
+  --from-literal=AWS_SECRET_ACCESS_KEY=$(openssl rand -base64 32) \
+  --from-literal=S3_ENDPOINT=http://minio.minio.svc.cluster.local:9000 \
+  --from-literal=S3_BUCKET=rune
+```
+
+#### Option 2: External S3 (AWS S3, GCS, etc.)
+
+Use an external S3-compatible service:
+
+```bash
+# Create S3 credentials Secret
+kubectl create secret generic rune-s3-secret \
+  -n rune \
+  --from-literal=AWS_ACCESS_KEY_ID=your-access-key \
+  --from-literal=AWS_SECRET_ACCESS_KEY=your-secret-key \
+  --from-literal=S3_ENDPOINT=https://s3.us-west-2.amazonaws.com \
+  --from-literal=S3_BUCKET=rune-data
+```
+
+**Requirements**:
+- S3-compatible endpoint (S3 API, AWS S3, GCS, Minio, etc.)
+- Access credentials (access key ID + secret access key)
+- Bucket created and ready
+- Network connectivity from RUNE pods to the S3 endpoint
+- (Optional) SSL/TLS for encrypted connections
+
+### Tier 1 Inference Backend
+
+RUNE Tier 1 agents require an LLM inference backend. Supported backends:
+
+#### Option 1: Ollama (Self-Hosted)
+
+Deploy Ollama on the cluster or externally:
+
+```bash
+# Deploy Ollama in the cluster (example)
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ollama
+  namespace: default
+spec:
+  containers:
+  - name: ollama
+    image: ollama/ollama:latest
+    ports:
+    - containerPort: 11434
+    resources:
+      requests:
+        memory: "16Gi"
+        cpu: "4"
+      limits:
+        memory: "32Gi"
+        cpu: "8"
+EOF
+
+# Create inference endpoint Secret
+kubectl create secret generic rune-inference-secret \
+  -n rune \
+  --from-literal=RUNE_INFERENCE_URL=http://ollama.default.svc.cluster.local:11434
+```
+
+#### Option 2: External LLM Service
+
+Point to an external inference service (k8s-inference, text-generation-webui, etc.):
+
+```bash
+# Create inference endpoint Secret
+kubectl create secret generic rune-inference-secret \
+  -n rune \
+  --from-literal=RUNE_INFERENCE_URL=http://inference.example.com:5000
+```
+
+**Requirements**:
+- LLM inference server running with OpenAI-compatible API
+- Supported models: Ollama models (llama2, mistral, etc.) for Tier 1 agents
+- Network connectivity from RUNE pods to the inference endpoint
+- (Optional) Authentication credentials if endpoint requires them
+
+### Network Connectivity Matrix (Production)
+
+| Source | Destination | Service | Port | Protocol | Purpose |
+|--------|-------------|---------|------|----------|---------|
+| RUNE pods | PostgreSQL endpoint | Database | 5432 (or custom) | TCP | Application data |
+| RUNE pods | S3 endpoint | Object storage | 443 or 9000 | TCP (HTTPS) | Benchmark artifacts |
+| RUNE pods | Inference endpoint | LLM backend | 11434 or custom | HTTP | Tier-1 agent inference |
+| RUNE pods | DNS server | CoreDNS | 53 | UDP/TCP | Service discovery |
+
 ## Containerd Mirror Configuration
 
 To allow Kubernetes nodes to pull images from the in-cluster Zot registry,
@@ -200,6 +381,7 @@ sudo systemctl restart containerd
 
 ## Pre-Deployment Checklist
 
+**Cluster & infrastructure**:
 - [ ] Kubernetes cluster is running and accessible via `kubectl`
 - [ ] kubectl >= 1.27.0 and helm >= 3.12.0 are installed
 - [ ] Bundle tarball has been transferred and checksum verified
@@ -209,3 +391,114 @@ sudo systemctl restart containerd
 - [ ] containerd is configured to use the in-cluster registry (or will be post-deploy)
 - [ ] (Production) StorageClass available for registry PVC
 - [ ] (Production) TLS certificates prepared for internal services
+
+**External services (production)**:
+- [ ] PostgreSQL instance provisioned (CNPG or managed service)
+- [ ] Database created and connection string available
+- [ ] S3-compatible storage configured (Minio or external)
+- [ ] S3 credentials and bucket ready
+- [ ] LLM inference backend running (Ollama or external)
+- [ ] Network paths verified (cluster → database, S3, inference)
+
+## Quick-Start Example (Production Airgap)
+
+This example walks through a complete setup with external services:
+
+### Step 1: Prepare external services (pre-deployment)
+
+```bash
+# 1. PostgreSQL (assume managed service or CNPG already running)
+# Get connection string from database provider
+RUNE_DB_URL="postgresql://user:pass@postgres.example.com:5432/rune"
+
+# 2. S3-compatible storage (assume Minio or AWS S3 ready)
+AWS_ACCESS_KEY_ID="your-access-key"
+AWS_SECRET_ACCESS_KEY="your-secret-key"
+S3_ENDPOINT="https://s3.example.com"
+S3_BUCKET="rune-data"
+
+# 3. Inference backend (assume Ollama or other service ready)
+RUNE_INFERENCE_URL="http://ollama.example.com:11434"
+```
+
+### Step 2: Transfer bundle to air-gapped environment
+
+```bash
+# On connected host, build minimal bundle (no embedded services)
+./scripts/build-bundle.sh \
+  --tag v0.1.0 \
+  --output rune-bundle-v0.1.0.tar.gz \
+  --arch amd64 \
+  --sign
+
+# Transfer to air-gapped environment via approved mechanism (USB, data diode, etc.)
+```
+
+### Step 3: Create Kubernetes Secrets for external services
+
+```bash
+# In air-gapped cluster
+kubectl create namespace rune
+
+# PostgreSQL Secret
+kubectl create secret generic rune-db-secret \
+  -n rune \
+  --from-literal=RUNE_DB_URL="postgresql://user:pass@postgres.example.com:5432/rune"
+
+# S3 Secret
+kubectl create secret generic rune-s3-secret \
+  -n rune \
+  --from-literal=AWS_ACCESS_KEY_ID="your-access-key" \
+  --from-literal=AWS_SECRET_ACCESS_KEY="your-secret-key" \
+  --from-literal=S3_ENDPOINT="https://s3.example.com" \
+  --from-literal=S3_BUCKET="rune-data"
+
+# Inference Secret
+kubectl create secret generic rune-inference-secret \
+  -n rune \
+  --from-literal=RUNE_INFERENCE_URL="http://ollama.example.com:11434"
+```
+
+### Step 4: Deploy RUNE with bootstrap
+
+```bash
+# Create values overlay for external services
+cat > /tmp/values-prod.yaml <<EOF
+postgres:
+  enabled: false  # Do NOT use in-cluster Postgres
+
+s3:
+  endpoint: https://s3.example.com
+  bucket: rune-data
+  secretRef: rune-s3-secret
+
+inference:
+  backend: http://ollama.example.com:11434
+EOF
+
+# Run bootstrap
+./scripts/bootstrap.sh \
+  --bundle /path/to/rune-bundle-v0.1.0.tar.gz \
+  --values /tmp/values-prod.yaml
+```
+
+### Step 5: Verify deployment
+
+```bash
+# Check all pods running
+kubectl get pods -n rune
+
+# Verify database connectivity
+kubectl exec -it -n rune deployment/rune-api -- \
+  psql "$RUNE_DB_URL" -c "SELECT version();"
+
+# Verify S3 connectivity
+kubectl exec -it -n rune deployment/rune-api -- \
+  aws s3 ls s3://rune-data/
+
+# Verify inference backend
+kubectl exec -it -n rune deployment/rune-api -- \
+  curl http://ollama.example.com:11434/api/status
+```
+
+That's it! RUNE is now deployed in air-gapped production with external services.
