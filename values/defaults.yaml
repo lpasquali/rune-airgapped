@@ -3,6 +3,15 @@
 ---
 runeVersion: "0.0.0a2"
 
+# Crossplane — optional infrastructure provisioning layer.
+# When crossplane.enabled is true, helmfile will install the Crossplane
+# core chart + providers/functions from the local OCI registry. See
+# docs/crossplane.md for when to enable it (partially-connected airgap
+# only — fully disconnected should use the CNPG on-prem path).
+crossplaneVersion: "2.2.0"
+crossplane:
+  enabled: false
+
 global:
   imageRegistry: "rune-registry.rune-registry.svc:5000"
   imagePullPolicy: IfNotPresent
