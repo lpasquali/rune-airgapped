@@ -16,26 +16,26 @@ permissions:
 
 jobs:
   security:
-    uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@144ef855dbf0420e5d9a8de2c8d8f89c2e789265 # main
+    uses: lpasquali/rune-ci/.github/workflows/security-scan.yml@144ef855dbf0420e5d9a8de2c8d8f89c2e789265
 
   shell:
-    uses: lpasquali/rune-ci/.github/workflows/shell-quality.yml@144ef855dbf0420e5d9a8de2c8d8f89c2e789265 # main
+    uses: lpasquali/rune-ci/.github/workflows/shell-quality.yml@144ef855dbf0420e5d9a8de2c8d8f89c2e789265
     with:
       script-dirs: "scripts"
 
   validate:
-    uses: lpasquali/rune-ci/.github/workflows/generic-validate.yml@144ef855dbf0420e5d9a8de2c8d8f89c2e789265 # main
+    uses: lpasquali/rune-ci/.github/workflows/generic-validate.yml@144ef855dbf0420e5d9a8de2c8d8f89c2e789265
     with:
       validate-yaml: "scripts/validate_yaml.py"
       validate-vex: "scripts/validate_vex.py"
 
   guard:
-    uses: lpasquali/rune-ci/.github/workflows/nginx-ingress-guard.yml@144ef855dbf0420e5d9a8de2c8d8f89c2e789265 # main
+    uses: lpasquali/rune-ci/.github/workflows/nginx-ingress-guard.yml@144ef855dbf0420e5d9a8de2c8d8f89c2e789265
 
   compliance:
     needs: [security, shell, validate, guard]
     if: always()
-    uses: lpasquali/rune-ci/.github/workflows/pr-compliance.yml@144ef855dbf0420e5d9a8de2c8d8f89c2e789265 # main
+    uses: lpasquali/rune-ci/.github/workflows/pr-compliance.yml@144ef855dbf0420e5d9a8de2c8d8f89c2e789265
     with:
       needs-json: ${{ toJson(needs) }}
       merge-gate-excludes: "guard" # Force pass
