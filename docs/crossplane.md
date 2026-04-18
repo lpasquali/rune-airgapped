@@ -62,7 +62,7 @@ This is the **same as Phase 1a** of the implementation and requires no external 
 
 This bundles:
 - RUNE suite images (rune, rune-operator, rune-ui, rune-audit, rune-docs)
-- Infrastructure images (nginx, Zot registry)
+- Infrastructure images (Caddy, Zot registry)
 - Optional: PostgreSQL image (for CNPG in-cluster)
 - **Crossplane v2.2.0** core image
 - **Crossplane functions**: patch-and-transform, go-templating, auto-ready

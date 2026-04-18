@@ -54,7 +54,7 @@ Bundle flags:
 | `--sign` | Sign images with cosign (requires `COSIGN_KEY` env or `--cosign-key`) |
 | `--dry-run` | List bundle contents without pulling anything |
 
-**Default bundle contents**: RUNE suite (rune, rune-operator, rune-ui) + infrastructure (nginx, Zot registry).
+**Default bundle contents**: RUNE suite (rune, rune-operator, rune-ui) + infrastructure (Caddy, Zot registry). Caddy is the base image used by `rune-docs` (per ADR 0008 in rune-docs); Zot is the in-cluster OCI registry.
 
 **Optional images** (dev/lab): PostgreSQL (via `--include-postgres`), Ollama, SeaweedFS. When included, `build-bundle.sh` resolves the image to an OCI digest via `crane`, pulls that pinned reference, and writes `images/<service>/bundle-meta.json` with source tag, digest, license, and provenance. The same fields are merged into `manifest.json`.
 
