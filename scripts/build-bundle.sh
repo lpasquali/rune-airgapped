@@ -43,7 +43,7 @@ readonly -a RUNE_IMAGES=(
 
 # Infrastructure images
 readonly -a INFRA_IMAGES=(
-    "docker.io/library/nginx:1.27.4-alpine"
+    "docker.io/library/caddy:2-alpine"
     "ghcr.io/project-zot/zot-linux-amd64:v2.1.2"
 )
 

@@ -124,7 +124,7 @@ rune-bundle-<tag>/
     rune-docs/
     rune-audit/
     zot-linux-amd64/
-    nginx/
+    caddy/
     ollama/              # (if --include-ollama)
     seaweedfs/           # (if --include-seaweedfs)
   charts/                # Packaged Helm charts (.tgz)
