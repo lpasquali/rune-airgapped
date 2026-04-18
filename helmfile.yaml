@@ -16,6 +16,20 @@ environments:
       - values/production.yaml
 
 releases:
+  # Optional: Crossplane v2 for declarative infrastructure provisioning
+  # of external PostgreSQL / object-storage, via the XRDs + Compositions
+  # shipped in rune-charts/crossplane. Opt-in per environment via
+  # `crossplane.enabled: true` (default: false).
+  - name: crossplane
+    namespace: crossplane-system
+    chart: rune-local/crossplane
+    version: "{{ .Values.crossplaneVersion }}"
+    condition: crossplane.enabled
+    values:
+      - values/crossplane.yaml
+    labels:
+      tier: infrastructure
+
   - name: rune-operator
     namespace: rune-system
     chart: rune-local/rune-operator

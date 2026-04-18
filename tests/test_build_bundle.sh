@@ -153,6 +153,48 @@ test_dry_run_with_ollama() {
     assert_contains "dry run with ollama shows ollama image" "ollama/ollama" "${output}"
 }
 
+test_dry_run_with_crossplane() {
+    echo "--- test_dry_run_with_crossplane ---"
+    local output
+    output="$(bash "${SCRIPT_UNDER_TEST}" \
+        --tag v0.0.0a2 \
+        --output /tmp/test-bundle.tar.gz \
+        --include-crossplane \
+        --dry-run 2>&1)" || true
+
+    assert_contains \
+        "dry run with crossplane shows crossplane core image" \
+        "ghcr.io/crossplane/crossplane:v2.2.0" "${output}"
+    assert_contains \
+        "dry run with crossplane shows provider-kubernetes" \
+        "provider-kubernetes" "${output}"
+    assert_contains \
+        "dry run with crossplane shows function-patch-and-transform" \
+        "function-patch-and-transform" "${output}"
+    assert_contains \
+        "dry run with crossplane shows function-go-templating" \
+        "function-go-templating" "${output}"
+}
+
+test_dry_run_without_crossplane_default() {
+    echo "--- test_dry_run_without_crossplane_default ---"
+    local output
+    output="$(bash "${SCRIPT_UNDER_TEST}" \
+        --tag v0.0.0a2 \
+        --output /tmp/test-bundle.tar.gz \
+        --dry-run 2>&1)" || true
+
+    if [[ "${output}" == *"crossplane"* ]]; then
+        echo "  FAIL: default bundle should NOT include crossplane images"
+        echo "    actual (crossplane lines):"
+        echo "${output}" | grep -i crossplane | sed 's/^/      /'
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+    else
+        echo "  PASS: default bundle does not include crossplane images"
+        PASS_COUNT=$((PASS_COUNT + 1))
+    fi
+}
+
 test_dry_run_with_sign() {
     echo "--- test_dry_run_with_sign ---"
     local output
@@ -204,6 +246,8 @@ test_unknown_option
 test_dry_run_mode
 test_dry_run_with_postgres
 test_dry_run_with_ollama
+test_dry_run_with_crossplane
+test_dry_run_without_crossplane_default
 test_dry_run_with_sign
 test_dry_run_architectures
 test_dry_run_no_changes
