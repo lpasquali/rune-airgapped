@@ -10,7 +10,7 @@
 ---
 - name: Load kernel modules required by containerd
   community.general.modprobe:
-    name: "{{ item }}"
+    name: "{{item}}"
     state: present
   loop:
     - overlay
@@ -29,8 +29,8 @@
 
 - name: Set sysctl parameters for Kubernetes networking
   ansible.posix.sysctl:
-    name: "{{ item.key }}"
-    value: "{{ item.value }}"
+    name: "{{item.key}}"
+    value: "{{item.value}}"
     sysctl_file: /etc/sysctl.d/99-rune-kubernetes.conf
     reload: true
     state: present
@@ -44,7 +44,7 @@
 # running this playbook, or pre-install packages on the base image.
 - name: Install required packages
   ansible.builtin.package:
-    name: "{{ item }}"
+    name: "{{item}}"
     state: present
   loop:
     - containerd
@@ -72,7 +72,7 @@
 
 - name: Copy helm binary from bundle (if not already installed)
   ansible.builtin.copy:
-    src: "{{ helm_bundle_path | default('/opt/rune-bundle/bin/helm') }}"
+    src: "{{helm_bundle_path | default('/opt/rune-bundle/bin/helm')}}"
     dest: /usr/local/bin/helm
     owner: root
     group: root
