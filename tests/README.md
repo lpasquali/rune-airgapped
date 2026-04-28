@@ -13,8 +13,8 @@ Tests are standalone bash scripts:
 
 ```bash
 # Run all bundle tests
-for f in tests/bundle/*.sh; do bash "$f"; done
+for f in tests/bundle/*.sh; do bash "$f" || exit $?; done
 
 # Run all lifecycle tests
-for f in tests/lifecycle/*.sh; do bash "$f"; done
+for f in tests/lifecycle/*.sh; do bash "$f" || exit $?; done
 ```
