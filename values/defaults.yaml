@@ -1,27 +1,13 @@
-# Default values for air-gapped RUNE deployment
-# All image references point to the local OCI registry.
+# Default values for RUNE airgapped deployment
+# IEC 62443 SM-10: Baseline versions for airgapped verification.
 ---
-runeVersion: "0.0.0a2"
-
-# Crossplane — optional infrastructure provisioning layer.
-# When crossplane.enabled is true, helmfile will install the Crossplane
-# core chart + providers/functions from the local OCI registry. See
-# docs/crossplane.md for when to enable it (partially-connected airgap
-# only — fully disconnected should use the CNPG on-prem path).
+runeVersion: "v0.0.0a5"
 crossplaneVersion: "2.2.0"
+
 crossplane:
   enabled: false
 
 global:
-  imageRegistry: "rune-registry.rune-registry.svc:5000"
+  registry: rune-registry.rune-registry.svc:5000
   imagePullPolicy: IfNotPresent
-  # No external image pulls in air-gapped mode
-  networkPolicy:
-    enabled: true
-  # Disable any outbound telemetry
-  telemetry:
-    enabled: false
-  # TLS for internal services
-  tls:
-    enabled: false
-    # Set to true and provide certs for production
+  storageClass: standard
