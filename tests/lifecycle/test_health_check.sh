@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 readonly SCRIPT_DIR
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 readonly REPO_ROOT
 SCRIPT_UNDER_TEST="${REPO_ROOT}/scripts/health-check.sh"
 readonly SCRIPT_UNDER_TEST
