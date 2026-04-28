@@ -1,21 +1,11 @@
-# rune-operator Helm values
+# RUNE Operator values for airgapped deployment
 ---
-serviceAccount:
-  name: rune-operator
-  create: false
-
-image:
-  repository: rune-registry.rune-registry.svc:5000/rune-operator
-  pullPolicy: IfNotPresent
+replicaCount: 1
 
 resources:
-  requests:
-    cpu: 100m
-    memory: 128Mi
   limits:
     cpu: 500m
     memory: 512Mi
-
-leaderElection:
-  enabled: true
-  namespace: rune-system
+  requests:
+    cpu: 50m
+    memory: 64Mi

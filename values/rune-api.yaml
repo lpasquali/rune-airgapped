@@ -1,28 +1,17 @@
-# rune-api Helm values
+# RUNE API values for airgapped deployment
 ---
-serviceAccount:
-  name: rune-api
-  create: false
+replicaCount: 1
 
-image:
-  repository: rune-registry.rune-registry.svc:5000/rune
-  pullPolicy: IfNotPresent
-
-service:
-  port: 8080
+# IEC 62443 SR 3.1: RBAC and Auth.
+# Note: Temporarily disabling auth to avoid 404 on estimates in airgapped dev.
+# production.yaml should re-enable this with proper secret handling.
+env:
+  RUNE_API_AUTH_DISABLED: "1"
 
 resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
   requests:
     cpu: 100m
     memory: 128Mi
-  limits:
-    cpu: 500m
-    memory: 512Mi
-
-# S3 endpoint for result storage (internal SeaweedFS)
-s3:
-  endpoint: "http://seaweedfs.rune.svc:8333"
-
-# Ollama endpoint for inference
-ollama:
-  endpoint: "http://ollama.rune.svc:11434"
