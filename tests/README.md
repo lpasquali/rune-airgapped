@@ -1,4 +1,4 @@
-# RUNE-Airgapped Test Suite
+# RUNE — Airgapped Test Suite
 
 This directory contains shell-based integration and unit tests for airgapped deployment scripts.
 
