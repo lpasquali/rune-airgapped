@@ -1,23 +1,11 @@
-# rune-ui Helm values
+# RUNE UI values for airgapped deployment
 ---
-serviceAccount:
-  name: rune-ui
-  create: false
-
-image:
-  repository: rune-registry.rune-registry.svc:5000/rune-ui
-  pullPolicy: IfNotPresent
-
-service:
-  port: 3000
+replicaCount: 1
 
 resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
   requests:
     cpu: 50m
     memory: 64Mi
-  limits:
-    cpu: 250m
-    memory: 256Mi
-
-api:
-  endpoint: "http://rune-api.rune.svc:8080"
