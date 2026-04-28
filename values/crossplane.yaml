@@ -1,39 +1,12 @@
-# Crossplane Helm values for air-gapped RUNE.
-#
-# Point Crossplane at the internal OCI registry (Zot) so provider /
-# function packages can be installed offline. See docs/crossplane.md
-# for when to enable Crossplane in air-gapped environments.
-#
-# These values mirror the upstream `ghcr.io/crossplane/crossplane`
-# Helm chart's `image` block; we only override the image location so
-# the Crossplane deployment pulls from the bundle-shipped image in
-# the local registry rather than from the public internet.
+# Crossplane v2 values for airgapped deployment
 ---
+# Overrides for airgapped registry
 image:
   repository: rune-registry.rune-registry.svc:5000/crossplane/crossplane
-  # Tag defaults to .Chart.AppVersion; when that is unacceptable
-  # (e.g. the bundle provides a different tag than the chart's
-  # AppVersion), override it explicitly here.
-  pullPolicy: IfNotPresent
 
-# Keep Crossplane's own metrics endpoint but do not install the
-# upstream ServiceMonitor — the cluster may not have Prometheus
-# Operator available in air-gapped mode. Operators can switch this
-# on after the fact.
-metrics:
+# Disable online features
+webhooks:
   enabled: true
-serviceMonitor:
-  enabled: false
 
-# Crossplane installs providers / functions as Package CRs post-install
-# (not via the Helm chart). Those manifests are expected to be applied
-# by the operator after `helmfile apply`; they reference packages in
-# xpkg.upbound.io/* that the bundle mirrors into the local registry.
-#
-# Example, operator-applied (NOT templated by this chart):
-#
-#   apiVersion: pkg.crossplane.io/v1
-#   kind: Provider
-#   metadata: { name: provider-kubernetes }
-#   spec:
-#     package: rune-registry.rune-registry.svc:5000/crossplane-contrib/provider-kubernetes:v1.2.1
+# Documentation examples for Providers and Functions should be added here
+# when the specific cloud target is selected.
