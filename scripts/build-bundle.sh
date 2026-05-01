@@ -684,6 +684,17 @@ main() {
     mkdir -p "${staging_dir}/manifests"
     mkdir -p "${staging_dir}/values"
 
+    # Copy configuration and helper scripts
+    if [[ -d "${REPO_ROOT}/scripts" ]]; then
+        cp -a "${REPO_ROOT}/scripts/"* "${staging_dir}/scripts/" 2>/dev/null || true
+    fi
+    if [[ -d "${REPO_ROOT}/manifests" ]]; then
+        cp -a "${REPO_ROOT}/manifests/"* "${staging_dir}/manifests/" 2>/dev/null || true
+    fi
+    if [[ -d "${REPO_ROOT}/values" ]]; then
+        cp -a "${REPO_ROOT}/values/"* "${staging_dir}/values/" 2>/dev/null || true
+    fi
+
     # Phase 1: Pull images
     pull_images "${staging_dir}"
 
