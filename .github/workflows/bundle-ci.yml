@@ -46,8 +46,8 @@ jobs:
           shellcheck --severity=warning --shell=bash scripts/*.sh
           echo "::endgroup::"
 
-          echo "::group::ShellCheck tests/*.sh"
-          shellcheck --severity=warning --shell=bash tests/test_*.sh
+          echo "::group::ShellCheck tests/*/*.sh"
+          shellcheck --severity=warning --shell=bash tests/*/*.sh
           echo "::endgroup::"
 
       - name: Install yamllint
@@ -73,11 +73,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Run test_build_bundle.sh
-        run: bash tests/test_build_bundle.sh
-
-      - name: Run test_bootstrap.sh
-        run: bash tests/test_bootstrap.sh
+      - name: Run unit tests
+        run: |
+          for test_script in tests/*/*.sh; do
+            echo "Running $test_script"
+            bash "$test_script"
+          done
 
   # ---------------------------------------------------------------------------
   # Job 3: Build bundle in dry-run mode and validate output structure
