@@ -46,8 +46,8 @@ jobs:
           shellcheck --severity=warning --shell=bash scripts/*.sh
           echo "::endgroup::"
 
-          echo "::group::ShellCheck tests/*.sh"
-          shellcheck --severity=warning --shell=bash tests/test_*.sh
+          echo "::group::ShellCheck tests/*/*.sh"
+          shellcheck --severity=warning --shell=bash tests/*/*.sh
           echo "::endgroup::"
 
       - name: Install yamllint
