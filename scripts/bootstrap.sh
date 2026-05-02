@@ -470,7 +470,7 @@ spec:
     spec:
       containers:
       - name: zot
-        image: ghcr.io/project-zot/zot-linux-amd64:v2.1.2
+        image: ghcr.io/project-zot/zot-linux-amd64:v2.1.16
         ports:
         - containerPort: ${ZOT_PORT}
           name: registry
